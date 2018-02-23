@@ -1,0 +1,27 @@
+
+Add eliza@irbnet.org to internal addresses. 
+Add new software testers email to internal addresses.
+Adjust isInternal to count all emails that aren't "support@irbnet.org" "ideas@irbnet.org" "noreply@irbnet.org" or anything else
+
+
+Remove "blank email" print statements
+Go through and check admin emails for Support Outreach Admins
+
+throw Exceptions or errors if an index error is encountered when reading / writing a file. 
+Write 0s to member_info_blank.csv to prevent index errors. 
+
+Make sure files write immediately after a process is completed successfully. Not all at the end. (member info is currently written after calls are entered. )
+
+frequency, weekly, monthly, quarterly, annually
+ -need to compute a moving average, need to store 52 weeks worth of data
+ 	store data using a FIFO queue / deque in a hidden csv file. 
+
+Create a folder to hide non-essential files
+
+import color into member_stats file. 
+
+create a git repo
+
+Switch to Java?
+
+DateTime objects?
