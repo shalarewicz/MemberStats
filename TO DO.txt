@@ -1,11 +1,6 @@
-
-Adjust isInternal to count all emails that aren't "support@irbnet.org" "ideas@irbnet.org" "noreply@irbnet.org" or anything else
+Create Json file from an IRBNet account
 
 Go through and check admin emails for Support Outreach Admins
-
-throw Exceptions or errors if an index error is encountered when reading / writing a file and exit the program
-
-Update google sheets at the end of the script. Prevent failures/errors from causing duplicate updates
 
 frequency, weekly, monthly, quarterly, annually
  -need to compute a moving average, need to store 52 weeks worth of data
