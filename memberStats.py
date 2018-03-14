@@ -99,7 +99,8 @@ parser.add_argument("-i", type=int, default=0, help="print every ith email read"
 # Optional: -a | -n Automatically count or skip all internal emails. 
 group = parser.add_mutually_exclusive_group()
 group.add_argument("-a", "--all", action="store_true", help="count all internal threads")
-group.add_argument("-n", "--none", action="store_true", help="skip all internal threads")
+group.add_argument("-n", "--none", action="store_true", help="count no internal threads")
+group.add_argument("-s", "--skip", action="store_true", help="skip thread counting. Use to test other parts of script")
 args = parser.parse_args()
 
 # Store arguments for later use
@@ -107,6 +108,7 @@ MBOX = args.mbox_file
 COUNT_ALL = args.all
 COUNT_EVERY = args.i
 COUNT_NONE = args.none
+SKIP = args.skip
 
 print "PARAMETERS:"
 print "    STATS FILE: " + MBOX
@@ -116,6 +118,8 @@ if COUNT_NONE:
 	print "    COUNT_NONE: No internal threads will be counted"
 if COUNT_EVERY > 0:
 	print "    DISPLAY EVERY: Every " + str(COUNT_EVERY) +" emails"
+if SKIP:
+	print "    SKIP: No threads will be counted. "
 	
 
 ###########################################################################################
@@ -180,13 +184,11 @@ def createMailAPI():
     return service
 
 SHEETS_API = createSheetsAPI()
-SPREADSHEET_ID = '1mkxL43rqDyBZ6T8TIzg1_OQKhVNjefvYTDg9noC18j4' #TODO Change to correct sheet
-RETENTION_SHEET = 'Retention' #TODO Remove if not used
-ADMIN_SHEET = 'Support Outreach Administrators'
-MEMBER_STATS_SHEET = 'Member Stats'
-WEEKLY_STATS_SHEET_ID = '1EaNnT4_zjeu7VHXskVo8jv5kvDrwfFv4Ss0GH-GZXtg' #TODO Replace with correct value
-
-
+SPREADSHEET_ID = '1mkxL43rqDyBZ6T8TIzg1_OQKhVNjefvYTDg9noC18j4' #TOTEST Change to a test sheet if testing
+ADMIN_SHEET = 'Support Outreach Administrators' #TOTEST Change to a test sheet if testing
+MEMBER_STATS_SHEET = 'Member Stats' #TOTEST Change to a test sheet if testing
+MEMBER_STATS_SHEET_ID = 1220379579 #TOTEST Change to a test sheet if testing
+WEEKLY_STATS_SHEET_ID = '12wQxfv5EOEEsi3zCFwwwAq05SAgvzXoHRZbD33-TQ3o' #TOTEST Change to a test sheet if testing
 
 ##################################################################################################
 # B. Read in existing member info and stats to be counted
@@ -455,6 +457,7 @@ def checkFromSupport(frm):
 #	 IRBNet. This is used to help avoid counting internal threads. 
 
 def isInternal(frm):
+	# TODO  Change this so new employees don't have to be added manually.
 	if "owen@irbnet.org" in frm:
 		return True
 	if "stephan@irbnet.org" in frm:
@@ -786,182 +789,183 @@ def getCutoffDate():
 
 cutoff = getCutoffDate()
 
-print "\nPreparing " + MBOX
-for message in mailbox.mbox(MBOX):
-	if i == 0:
-		print "\nStarting to read messages"
-		i += 1
+if not SKIP:
+	print "\nPreparing " + MBOX
+	for message in mailbox.mbox(MBOX):
+		if i == 0:
+			print "\nStarting to read messages"
+			i += 1
 
-	threadID = message['X-GM-THRID']
-	labels = message['X-Gmail-Labels']
-	date = message['Date']
-	fromAddress = message['From']
-	to = message['To']
-	subject = message['Subject']
+		threadID = message['X-GM-THRID']
+		labels = message['X-Gmail-Labels']
+		date = message['Date']
+		fromAddress = message['From']
+		to = message['To']
+		subject = message['Subject']
 
-	# If any of the field is blank convert from None to "" to avoid errors
-	if labels is None:
-		writer.writerow([threadID, message['Date'], message['From'], message['To'],
-		 message['Subject'], message['X-Gmail-Labels']])
-		continue
-	if threadID is None:
-		threadID = ""
-	if fromAddress is None:
-		fromAddress = ""
-	if to is None:
-		to = ""
-	if subject is None:
-		subject = ""
-	if date is None:
-		date = ""
-	# Replace newline characters ('\r' and '\n') to avoid separating labels with spaces. This is a result of 
-	# a long label string in the mbox file. 
-	if "\r" or "\n" in labels:
-		labels = labels.replace('\n', '').replace('\r', '')
-	if "\r" or "\n" in subject:
-		subject = subject.replace('\n', '').replace('\r', '')
-	
-	# If spam or idea then write to mail.csv then continue. No need to waste time formatting.
-	if isSpam(fromAddress):
-		writer.writerow([threadID, message['Date'], message['From'], message['To'],
-		 message['Subject'], message['X-Gmail-Labels']])
-		i += 1
-		continue
-
-	if isIdea(to):
-		writer.writerow([threadID, message['Date'], message['From'], message['To'],
-			message['Subject'], message['X-Gmail-Labels']])
-		i += 1
-		continue
-
-	# Extract email from fromAddress currently formatted as "Last name, First name" <email>
-	fromEmail = extractEmail(fromAddress)
-
-	# Check for emails from Support. If email is from Support then pass False to extractInfo
-	# to not use the email date for lastContact and vice versa
-	try:
-		if checkFromSupport(fromAddress):
-			extractInfo(threadID, labels, date, False)
-		else:
-			extractInfo(threadID, labels, date, True)
-	except IndexError:
-		print "IndexError for the following date."
-		print message['Date']
-		continue
-
-	# If the the thread contains a stat labels then change nonPing to True
-	if not threads[threadID].statsLabels == []:
-		threads[threadID].nonPing = True
-
-	if "@irbnet.org" not in fromEmail and threads[threadID].nonPing and fromEmail not in adminEmails and fromEmail not in missedAdmins:
-		missedAdmins[fromEmail] = ""
-
-	# If the thread has an oldest date before the cutoff change goodThread to false and write
-	# message to mail.csv then continue. This can also be configured to ask the user if the 
-	# thread should be counted however there are a surprising amount of threads that have this 
-	# problem 99% of which should not count so I decided to skip this. Therefore, if an admin 
-	# replies to a thread from a few months ago with a completely new inquiry the thread won't 
-	# be counted. I'm OK with this as it does not happen too often.
-
-	if not compareDates(threads[threadID].oldestDate, cutoff):
-		threads[threadID].count += 1
-		threads[threadID].goodThread = False
-		writer.writerow([threadID, message['Date'], message['From'], message['To'],
-			message['Subject'], message['X-Gmail-Labels']])
-		continue
+		# If any of the field is blank convert from None to "" to avoid errors
+		if labels is None:
+			writer.writerow([threadID, message['Date'], message['From'], message['To'],
+			 message['Subject'], message['X-Gmail-Labels']])
+			continue
+		if threadID is None:
+			threadID = ""
+		if fromAddress is None:
+			fromAddress = ""
+		if to is None:
+			to = ""
+		if subject is None:
+			subject = ""
+		if date is None:
+			date = ""
+		# Replace newline characters ('\r' and '\n') to avoid separating labels with spaces. This is a result of 
+		# a long label string in the mbox file. 
+		if "\r" or "\n" in labels:
+			labels = labels.replace('\n', '').replace('\r', '')
+		if "\r" or "\n" in subject:
+			subject = subject.replace('\n', '').replace('\r', '')
 		
-	# If thread is bad write the message to mail.csv and continue
-	if not threads[threadID].goodThread:
+		# If spam or idea then write to mail.csv then continue. No need to waste time formatting.
+		if isSpam(fromAddress):
+			writer.writerow([threadID, message['Date'], message['From'], message['To'],
+			 message['Subject'], message['X-Gmail-Labels']])
+			i += 1
+			continue
+
+		if isIdea(to):
+			writer.writerow([threadID, message['Date'], message['From'], message['To'],
+				message['Subject'], message['X-Gmail-Labels']])
+			i += 1
+			continue
+
+		# Extract email from fromAddress currently formatted as "Last name, First name" <email>
+		fromEmail = extractEmail(fromAddress)
+
+		# Check for emails from Support. If email is from Support then pass False to extractInfo
+		# to not use the email date for lastContact and vice versa
+		try:
+			if checkFromSupport(fromAddress):
+				extractInfo(threadID, labels, date, False)
+			else:
+				extractInfo(threadID, labels, date, True)
+		except IndexError:
+			print "IndexError for the following date."
+			print message['Date']
+			continue
+
+		# If the the thread contains a stat labels then change nonPing to True
+		if not threads[threadID].statsLabels == []:
+			threads[threadID].nonPing = True
+
+		if "@irbnet.org" not in fromEmail and threads[threadID].nonPing and fromEmail not in adminEmails and fromEmail not in missedAdmins:
+			missedAdmins[fromEmail] = ""
+
+		# If the thread has an oldest date before the cutoff change goodThread to false and write
+		# message to mail.csv then continue. This can also be configured to ask the user if the 
+		# thread should be counted however there are a surprising amount of threads that have this 
+		# problem 99% of which should not count so I decided to skip this. Therefore, if an admin 
+		# replies to a thread from a few months ago with a completely new inquiry the thread won't 
+		# be counted. I'm OK with this as it does not happen too often.
+
+		if not compareDates(threads[threadID].oldestDate, cutoff):
+			threads[threadID].count += 1
+			threads[threadID].goodThread = False
+			writer.writerow([threadID, message['Date'], message['From'], message['To'],
+				message['Subject'], message['X-Gmail-Labels']])
+			continue
+			
+		# If thread is bad write the message to mail.csv and continue
+		if not threads[threadID].goodThread:
+			threads[threadID].count += 1
+			writer.writerow([threadID, message['Date'], message['From'], message['To'],
+			 message['Subject'], message['X-Gmail-Labels']])
+			i += 1
+			continue
+
+		# If threadID in threads then if the thread is a ping or new org and the thread count = 2 change 
+		# either inquiry demo vm to True or increase newOrg counter by one (change newOrg later) 
+		#
+		# If the thread is nonPing and the current message is to and from Support or sent internally 
+		# ask if the thread should count
+		#
+		# If 'Sales Ping is in the labels for the message' and it was sent via webform increase the appropriate
+		# counter. 
+
 		threads[threadID].count += 1
+		if not threads[threadID].nonPing:
+			if "IRBNet Demo Request" in subject and threads[threadID].count == 2:
+					threads[threadID].demo = True
+					threads[threadID].goodThread = True
+			if "IRBNet Inquiry From" in subject and threads[threadID].count == 2:
+				threads[threadID].inquiry = True
+				threads[threadID].goodThread = True
+			if "IRBNet Help Desk Inquiry" in subject:
+				if "norepy@irbnet.org" not in fromAddress:
+					threads[threadID].count -= 1
+				threads[threadID].vm = True
+				threads[threadID].goodThread = True
+			if "New Organizations" in labels and threads[threadID].count == 2:
+				newOrgs += 1
+				threads[threadID].goodThread = True
+		else:
+			if checkToFromSupport(to, fromAddress) and not "New Organizations" in threads[threadID].statsLabels and not threads[threadID].checked:
+				shouldItCount(fromAddress, to, subject, date, labels, "to and from Support")
+			elif (isInternal(fromAddress) or (checkFromSupport(fromAddress) and isInternal(to) and not "Sales Pings" in threads[threadID].statsLabels)) and not threads[threadID].checked:
+				shouldItCount(fromAddress, to, subject, date, labels, "Internal")
+			if "Sales Ping" in labels and ("IRBNet Demo Request" in subject or "IRBNet Inquiry From" in subject) and not threads[threadID].checked:
+					webForm += 1
+					threads[threadID].checked = True
+					threads[threadID].goodThread = True
+
+
+		# Write message to formatted_mail.csv
+		datedWriter.writerow([threadID, threads[threadID].date, message['From'], message['To'],
+		 message['Subject'], threads[threadID].statsLabels, threads[threadID].memberLabels])
+
+		# Write message to mail.csv
 		writer.writerow([threadID, message['Date'], message['From'], message['To'],
 		 message['Subject'], message['X-Gmail-Labels']])
+
+		
+		# Print every user specified amount of messages. 
+		if not COUNT_EVERY == 0 and i % COUNT_EVERY == 0:
+			print i
+			print [threadID, message['Date'], message['From'], message['To'],
+		 message['Subject'], message['X-Gmail-Labels']]
+
+		# Increase message count by one
 		i += 1
-		continue
 
-	# If threadID in threads then if the thread is a ping or new org and the thread count = 2 change 
-	# either inquiry demo vm to True or increase newOrg counter by one (change newOrg later) 
-	#
-	# If the thread is nonPing and the current message is to and from Support or sent internally 
-	# ask if the thread should count
-	#
-	# If 'Sales Ping is in the labels for the message' and it was sent via webform increase the appropriate
-	# counter. 
+		# Add message info to the dictionary 'threadLookupInfo' to store data when counting stats and 
+		# writing threadLookupInfo.csv
 
-	threads[threadID].count += 1
-	if not threads[threadID].nonPing:
-		if "IRBNet Demo Request" in subject and threads[threadID].count == 2:
-				threads[threadID].demo = True
-				threads[threadID].goodThread = True
-		if "IRBNet Inquiry From" in subject and threads[threadID].count == 2:
-			threads[threadID].inquiry = True
-			threads[threadID].goodThread = True
-		if "IRBNet Help Desk Inquiry" in subject:
-			if "norepy@irbnet.org" not in fromAddress:
-				threads[threadID].count -= 1
-			threads[threadID].vm = True
-			threads[threadID].goodThread = True
-		if "New Organizations" in labels and threads[threadID].count == 2:
-			newOrgs += 1
-			threads[threadID].goodThread = True
-	else:
-		if checkToFromSupport(to, fromAddress) and not "New Organizations" in threads[threadID].statsLabels and not threads[threadID].checked:
-			shouldItCount(fromAddress, to, subject, date, labels, "to and from Support")
-		elif (isInternal(fromAddress) or (checkFromSupport(fromAddress) and isInternal(to) and not "Sales Pings" in threads[threadID].statsLabels)) and not threads[threadID].checked:
-			shouldItCount(fromAddress, to, subject, date, labels, "Internal")
-		if "Sales Ping" in labels and ("IRBNet Demo Request" in subject or "IRBNet Inquiry From" in subject) and not threads[threadID].checked:
-				webForm += 1
-				threads[threadID].checked = True
-				threads[threadID].goodThread = True
+		if not threadID in threadLookupInfo:
+			threadLookupInfo[threadID] = [threads[threadID].oldestDate, subject, fromAddress, to, labels]
 
+	# Close mail.csv
+	# Close formatted_mail.csv
+	firstOutFile.close()
+	outfile.close()
 
-	# Write message to formatted_mail.csv
-	datedWriter.writerow([threadID, threads[threadID].date, message['From'], message['To'],
-	 message['Subject'], threads[threadID].statsLabels, threads[threadID].memberLabels])
+	print "\nDone reading mbox file\n"
 
-	# Write message to mail.csv
-	writer.writerow([threadID, message['Date'], message['From'], message['To'],
-	 message['Subject'], message['X-Gmail-Labels']])
+	#######################################################################################
+	# F. Update date of last contact and check-in date for each member
 
-	
-	# Print every user specified amount of messages. 
-	if not COUNT_EVERY == 0 and i % COUNT_EVERY == 0:
-		print i
-		print [threadID, message['Date'], message['From'], message['To'],
-	 message['Subject'], message['X-Gmail-Labels']]
+	# 1. compare the most recent date for each thread against the date of last contact
+	#    for each member and swap the them in necessary.
 
-	# Increase message count by one
-	i += 1
+	print "Updating dates of last contact and check-in call dates...\n"
 
-	# Add message info to the dictionary 'threadLookupInfo' to store data when counting stats and 
-	# writing threadLookupInfo.csv
-
-	if not threadID in threadLookupInfo:
-		threadLookupInfo[threadID] = [threads[threadID].oldestDate, subject, fromAddress, to, labels]
-
-# Close mail.csv
-# Close formatted_mail.csv
-firstOutFile.close()
-outfile.close()
-
-print "\nDone reading mbox file\n"
-
-#######################################################################################
-# F. Update date of last contact and check-in date for each member
-
-# 1. compare the most recent date for each thread against the date of last contact
-#    for each member and swap the them in necessary.
-
-print "Updating dates of last contact and check-in call dates...\n"
-
-for thread in threads:
-	if threads[thread].memberLabels == []:
-		pass
-	else:
-		for mem in threads[thread].memberLabels:
-			if compareDates(threads[thread].date, members[mem].lastContact):
-				members[mem].lastContact = threads[thread].date
-			if compareDates(threads[thread].checkInDate, members[mem].phone):
-				members[mem].phone = threads[thread].checkInDate
+	for thread in threads:
+		if threads[thread].memberLabels == []:
+			pass
+		else:
+			for mem in threads[thread].memberLabels:
+				if compareDates(threads[thread].date, members[mem].lastContact):
+					members[mem].lastContact = threads[thread].date
+				if compareDates(threads[thread].checkInDate, members[mem].phone):
+					members[mem].phone = threads[thread].checkInDate
 
 #######################################################################################
 # G. Count Statistics
@@ -1104,7 +1108,7 @@ for thread in toDelete:
 
 writeOpenFile = open('Run Files\open.txt', 'wb')
 
-print "Recordign open inquiries...\n"
+print "Recording open inquiries...\n"
 for thread in openInquires:
 	writeOpenFile.write(thread + "\n")
 	writeOpenFile.write(openInquires[thread].subject + "\n")
@@ -1329,16 +1333,20 @@ newMemberStatsBody = {
 	"majorDimension": "ROWS"
 }
 
-memberInfoUpdateRange = 'Sheet5' + '!A2:' + getA1ColumnNotation(NUMBER_OF_MEMBER_STATS + 3)
-SHEETS_API.spreadsheets().values().update(spreadsheetId=SPREADSHEET_ID, body=newMemberStatsBody, 
-	range=memberInfoUpdateRange, valueInputOption="USER_ENTERED",
-	 responseValueRenderOption="FORMATTED_VALUE").execute()
+#TOTEST Change for testing
+memberInfoUpdateRange = MEMBER_STATS_SHEET + '!A2:' + getA1ColumnNotation(NUMBER_OF_MEMBER_STATS + 3) #TODO CHANGE FOR TESTS
+try:
+	SHEETS_API.spreadsheets().values().update(spreadsheetId=SPREADSHEET_ID, body=newMemberStatsBody, 
+		range=memberInfoUpdateRange, valueInputOption="USER_ENTERED",
+	 	responseValueRenderOption="FORMATTED_VALUE").execute()
+except HttpError:
+	print "Unable to write Member Specific Stats information"
 
 sortRequest = {
 	"requests":[ {
       "sortRange": {
         "range": {
-          "sheetId": 1457519222, #todo change to correct sheet
+          "sheetId": MEMBER_STATS_SHEET_ID,
           "startRowIndex": 1,
           "endRowIndex": 1000,
           "endColumnIndex": 1000,
@@ -1354,12 +1362,15 @@ sortRequest = {
     }]
 }
 SHEETS_API.spreadsheets().batchUpdate(spreadsheetId=SPREADSHEET_ID, body=sortRequest).execute()
+
 ######################################################################################################
 # K. Write updated Admin specific data
 
 missedAdminsOut = open("Run Files\Admin Contacts Not Tracked.csv", 'wb')
 missedAdminWriter = csv.writer(missedAdminsOut)
 
+for admin in missedAdmins:
+	missedAdminWriter.writerow([admin, missedAdmins[admin]])
 # This hurts my soul
 updatedAdminDates = [""] * len(admins)
 
@@ -1426,15 +1437,15 @@ email = email + "Total Open Inquiries: " + str(totalOpen) + "\n"
 email = email + "Total Closed Inquiries: " + str(totalClosed) + "\n\n"
 email = email + "Total # of Sessions: " + str(sessions) + "\n"
 email = email + "Total # of Sales Calls: " + str(salesCalls) + "\n"
-email = email + "Total # of Demo Calls: " + str(salesDemos) + "\n\n"
+email = email + "Total # of Demo Calls: " + str(salesDemos) + " " + str(salesDemoInstiutions) + "\n\n"
 email = email + "Cumulative Weekly Statistics can be be accessed via the following sheet:\n"
 email = email + "https://docs.google.com/a/irbnet.org/spreadsheets/d/12wQxfv5EOEEsi3zCFwwwAq05SAgvzXoHRZbD33-TQ3o/edit?usp=sharing\n\n"
 email = email + "Let me know if you have any questions. Thanks!\n\n"
 email = email + initials
 
 
-try:#TODO: Change to Andy's email address
-	message = createMessage("me", "shalarewicz@gmail.com", "Stats as of " + today1 + "\n\n", email) 
+try:
+	message = createMessage("me", "andy@irbnet.org", "Stats as of " + today1 + "\n\n", email) 
 	draft = createDraft(MAIL_API, "me", message)
 	sendDraft(MAIL_API, "me", draft)	
 	
@@ -1452,8 +1463,7 @@ except:
 
 # Finally
 print "\nRemoving mbox files...\n"
-# TODO
-# os.remove(MBOX)
-# os.remove('Inbox.mbox')
+os.remove(MBOX)
+os.remove('Inbox.mbox')
 print "End!"
 
