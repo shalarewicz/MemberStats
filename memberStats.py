@@ -348,7 +348,7 @@ lastWeekOpen = 0
 print "\nBegin\n"
 
 # Open open.txt for reading
-openInquiriesFile = open('open.txt', 'rb')
+openInquiriesFile = open('Run Files/open.txt', 'rb')
 
 currentID = ""
 currentSubject = ""
@@ -1299,8 +1299,7 @@ SHEETS_API.spreadsheets().batchUpdate(spreadsheetId=WEEKLY_STATS_SHEET_ID, body=
 ######################################################################################################
 # J. Member Specific Stats info. 
 
-# Now we'll update  last contact info and cumulative member stats and 
-# and write a new version of member_info_blank.csv to account for any new institutions
+# Now we'll update  last contact info and cumulative member stats
 
 newMemberStats = []
 
