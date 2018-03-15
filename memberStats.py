@@ -189,22 +189,22 @@ def createMailAPI():
     return service
 
 # Production Sheets / Ranges
-# SHEETS_API = createSheetsAPI()
-# SPREADSHEET_ID = '1mkxL43rqDyBZ6T8TIzg1_OQKhVNjefvYTDg9noC18j4'
-# ADMIN_SHEET = 'Support Outreach Administrators'
-# MEMBER_STATS_SHEET = 'Member Stats'
-# MEMBER_STATS_SHEET_ID = 1220379579
-# WEEKLY_STATS_SHEET_ID = '12wQxfv5EOEEsi3zCFwwwAq05SAgvzXoHRZbD33-TQ3o'
-# STATS_EMAIL = "andy@irbnet.org"
-
-# Testing Sheets / Ranges
 SHEETS_API = createSheetsAPI()
-SPREADSHEET_ID = '1Vuozw7SwH4T-w6kAivL0nxLpdc3KpCFyQG8JeLlhPp8' 
+SPREADSHEET_ID = '1mkxL43rqDyBZ6T8TIzg1_OQKhVNjefvYTDg9noC18j4'
 ADMIN_SHEET = 'Support Outreach Administrators'
 MEMBER_STATS_SHEET = 'Member Stats'
 MEMBER_STATS_SHEET_ID = 1220379579
-WEEKLY_STATS_SHEET_ID = '1zT_lGeug1Nfk7x3RLmiT59Z3mVVBdv6ryqz-DRkh0q8'
-STATS_EMAIL = "stephan@irbnet.org"
+WEEKLY_STATS_SHEET_ID = '12wQxfv5EOEEsi3zCFwwwAq05SAgvzXoHRZbD33-TQ3o'
+STATS_EMAIL = "andy@irbnet.org"
+
+# Testing Sheets / Ranges
+# SHEETS_API = createSheetsAPI()
+# SPREADSHEET_ID = '1Vuozw7SwH4T-w6kAivL0nxLpdc3KpCFyQG8JeLlhPp8' 
+# ADMIN_SHEET = 'Support Outreach Administrators'
+# MEMBER_STATS_SHEET = 'Member Stats'
+# MEMBER_STATS_SHEET_ID = 1220379579
+# WEEKLY_STATS_SHEET_ID = '1zT_lGeug1Nfk7x3RLmiT59Z3mVVBdv6ryqz-DRkh0q8'
+# STATS_EMAIL = "stephan@irbnet.org"
 ##################################################################################################
 # B. Read in existing member info and stats to be counted
 
