@@ -335,21 +335,35 @@ for admin in adminSheet:
 		onHeader = False
 		continue
 	else:
-		name = admin[1]
-		checkInDate = admin[4]
-		lastContactDate = admin[5]
-		email1 = admin[6].lower()
-		email2 = admin[7].lower()
-		email3 = admin[8].lower()
-		
-		admins[name] = adminInfo(rownum, checkInDate, lastContactDate)
-		adminEmails[email1] = name
-		#Need to check other emails as well
-		if not email2 == "":
-			adminEmails[email2] = name
-		if not email3 == "":
-			adminEmails[email3] = name
-		rownum +=1
+		try: 
+			name = admin[1]
+			checkInDate = admin[4]
+			lastContactDate = admin[5]
+			email1 = admin[6].lower()
+			email2 = admin[7].lower()
+			email3 = admin[8].lower()
+			
+			admins[name] = adminInfo(rownum, checkInDate, lastContactDate)
+			adminEmails[email1] = name
+			#Need to check other emails as well
+			if not email2 == "":
+				adminEmails[email2] = name
+			if not email3 == "":
+				adminEmails[email3] = name
+			rownum +=1
+		except IndexError:
+			print "\n\nCould not read full data from Support Outreach Administrators tab for:"
+			print "\t" + str(admin) + "\n"
+			print "This is likely the result of a missing phone number. Please ensure the following fields are entered for this administrator and re-run the script."
+			print "Institution"
+			print "Name"
+			print "Role"
+			print "Department			"
+			print "Primary E-mail"
+			print "Primary Phone"
+
+			sys.exit()
+			
 			
 #######################################################################################
 # C.  Read in open inquiries
