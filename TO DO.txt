@@ -11,8 +11,4 @@ DateTime objects?
 
 Read mail from Support Inbox to skip the export step. 
 
-add a --test, -t flag to use test files from command line
-
 Re-work how Support Outreach admins is read to prevent errors if there are blanks
-
-Duplicate Current Tab, Rename, and Past column A as text in Enrollment Dashboard. 
