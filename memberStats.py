@@ -65,6 +65,7 @@ import calendar
 from recordtype import *
 import argparse
 import os.path
+import traceback
 
 
 ###########################################################################################
@@ -141,7 +142,7 @@ if TEST:
 	CURRENT_SHEET_ID = 1989883246
 else:
 	# Production Sheets / Ranges
-	print "    PRODUCTION: Test sheets will be used rather than production sheets"
+	print "    PRODUCTION: Production sheets will be used rather than test sheets"
 	SPREADSHEET_ID = '1mkxL43rqDyBZ6T8TIzg1_OQKhVNjefvYTDg9noC18j4'
 	ADMIN_SHEET = 'Support Outreach Administrators'
 	MEMBER_STATS_SHEET = 'Member Stats'
@@ -1484,7 +1485,7 @@ except:
 # Duplicate Current Tab in Enrollment Dashboard. 
 print "Duplicating Current Tab on Enrollment Dashboard"
 try:
-	NEW_TITLE = str(cutoff)[:5]
+	NEW_TITLE = str(today1)[:5]
 
 	batchUpdateRequest = {
 		'requests': [
@@ -1497,7 +1498,6 @@ try:
 		]
 	}
 
-	#TODO Error handling if a duplicate sheet ID is used. 
 	SHEETS_API.spreadsheets().batchUpdate(spreadsheetId=ENROLLMENT_DASHBOARD_ID, body=batchUpdateRequest).execute()
 
 	#Remove formulas from the duplicate tab
@@ -1510,7 +1510,26 @@ try:
 	}
 
 	SHEETS_API.spreadsheets().values().update(spreadsheetId=ENROLLMENT_DASHBOARD_ID, valueInputOption='RAW', range=NEW_TITLE+'!A:A', body=updateBody).execute()
-except HttpError:
+	SHEETS_API.spreadsheets().values().clear(spreadsheetId=ENROLLMENT_DASHBOARD_ID, range='Current_Calls', body={}).execute()
+	SHEETS_API.spreadsheets().values().clear(spreadsheetId=ENROLLMENT_DASHBOARD_ID, range='Bens_Calls', body={}).execute()
+
+	namedRanges = SHEETS_API.spreadsheets().get(spreadsheetId=ENROLLMENT_DASHBOARD_ID, ranges=NEW_TITLE).execute().get('namedRanges', [])
+
+	
+	ids = []
+	namedRangeDeleteRequest = []
+	for namedRange in namedRanges:	
+		id = namedRange.get('namedRangeId', [])
+		namedRangeDeleteRequest.append({"deleteNamedRange": {"namedRangeId": id}})
+	
+
+	namedRangeDeleteRequestBody = {"requests": namedRangeDeleteRequest}
+
+	SHEETS_API.spreadsheets().batchUpdate(spreadsheetId=ENROLLMENT_DASHBOARD_ID, body=namedRangeDeleteRequestBody).execute()
+
+except HttpError as e:
+	print e
+	traceback.print_exception(HttpError, e)
 	raw_input("The Current tab in the Enrollment Dashboard could not be duplicated. Please duplicate the tab manually and remove formulas from column A of the duplicated sheet using the paste as values tool. Press enter to continue")
 
 # Remove mbox files
