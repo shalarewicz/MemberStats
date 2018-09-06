@@ -73,10 +73,9 @@ import traceback
 import httplib2
 import os
 
-from apiclient import discovery
-from oauth2client import client
-from oauth2client import tools
-from oauth2client.file import Storage
+from googleapiclient.discovery import build
+from httplib2 import Http
+from oauth2client import file, client, tools
 from googleapiclient.errors import HttpError
 from email.mime.text import MIMEText
 import base64
@@ -179,7 +178,7 @@ def get_credentials():
     credential_path = os.path.join(credential_dir,
                                    'googleapis.com-python-quickstart.json')
 
-    store = Storage(credential_path)
+    store = file.Storage(credential_path)
     credentials = store.get()
     if not credentials or credentials.invalid:
         flow = client.flow_from_clientsecrets(CLIENT_SECRET_FILE, SCOPES)
@@ -198,7 +197,7 @@ def createSheetsAPI():
     http = credentials.authorize(httplib2.Http())
     discoveryUrl = ('https://sheets.googleapis.com/$discovery/rest?'
                     'version=v4')
-    service = discovery.build('sheets', 'v4', http=http,
+    service = build('sheets', 'v4', http=http,
                               discoveryServiceUrl=discoveryUrl)
 
     return service
@@ -208,7 +207,7 @@ def createMailAPI():
 
     credentials = get_credentials()
     http = credentials.authorize(httplib2.Http())
-    service = discovery.build('gmail', 'v1', http=http)
+    service = build('gmail', 'v1', http=http)
 
     return service
 
@@ -1252,7 +1251,8 @@ for stat in statsLabels:
 
 # Creates a list of requests for the sheets API. Each entry in statsColumn in a row in the google sheet
 # each value in "values" is a cell in the row. 
-statsColumn = [{"values":[{ "userEnteredValue": {"stringValue": time.strftime("%m/%d/%Y")}}]}]
+# statsColumn = [{"values":[{ "userEnteredValue": {"numberValue": time.strftime("%m/%d/%Y")}}]}]
+statsColumn = [{"values":[{ "userEnteredValue": {"stringValue": '01/01/2000'}}]}]
 
 # The call addStatValueToColumn(int i, str valueType) is used to create a Sheets API compatible request 
 # for each stat. This method essentially builds a column. 
