@@ -14,3 +14,5 @@ Read mail from Support Inbox to skip the export step.
 Clear "No Calls row from current tab"
 
 Remove apostrophe being written in Date Header on Weekly Support Stats Sheet
+
+When reading in remove blanks
