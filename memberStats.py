@@ -907,7 +907,7 @@ if not SKIP:
 				threads[threadID].inquiry = True
 				threads[threadID].goodThread = True
 			if "IRBNet Help Desk Inquiry" in subject:
-				if "norepy@irbnet.org" not in fromAddress:
+				if "noreply@irbnet.org" not in fromAddress:
 					threads[threadID].count -= 1
 				threads[threadID].vm = True
 				threads[threadID].goodThread = True
@@ -1251,8 +1251,7 @@ for stat in statsLabels:
 
 # Creates a list of requests for the sheets API. Each entry in statsColumn in a row in the google sheet
 # each value in "values" is a cell in the row. 
-# statsColumn = [{"values":[{ "userEnteredValue": {"numberValue": time.strftime("%m/%d/%Y")}}]}]
-statsColumn = [{"values":[{ "userEnteredValue": {"stringValue": '01/01/2000'}}]}]
+statsColumn = [{"values":[{ "userEnteredValue": {"stringValue": str(time.strftime("%m/%d/%Y"))}}]}]
 
 # The call addStatValueToColumn(int i, str valueType) is used to create a Sheets API compatible request 
 # for each stat. This method essentially builds a column. 
