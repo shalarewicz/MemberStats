@@ -19,7 +19,28 @@ CLIENT_SECRET_FILE = 'Run Files\\client_secret.json'
 APPLICATION_NAME = 'Google API for Stats'
 
 
+
+def construct():
+    """
+    Initializes Mail and Sheets APIs
+    :return: (sheets api, mail api)
+    """
+    create_sheets_api()
+    create_mail_api()
+
+    return SHEETS_API, MAIL_API
+
+
 def get_credentials():
+    import pickle
+    try:
+        from google_auth_oauthlib.flow import InstalledAppFlow
+        from google.auth.transport.requests import Request
+    except ImportError, e:
+        print "ERROR: google.auth not found. Install the google.auth modules by typing "
+        print "pip install --upgrade google-api-python-client google-auth-httplib2 google-auth-oauthlib " \
+              "into the command line"
+
     """Gets valid user credentials from storage.
 
     If nothing has been stored, or if the stored credentials are invalid,
@@ -28,49 +49,89 @@ def get_credentials():
     Returns:
         Credentials, the obtained credential.
     """
+
+    creds = None
+    # The file token.pickle stores the user's access and refresh tokens, and is
+    # created automatically when the authorization flow completes for the first
+    # time.
     home_dir = os.path.expanduser('~')
     credential_dir = os.path.join(home_dir, '.credentials')
     if not os.path.exists(credential_dir):
         os.makedirs(credential_dir)
-    credential_path = os.path.join(credential_dir,
-                                   'googleapis.com-python-quickstart.json')
+    credential_path = os.path.join(credential_dir, 'Run Files/client_secret.json')
+    if os.path.exists('token.pickle'):
+        with open('token.pickle', 'rb') as token:
+            creds = pickle.load(token)
+    if not creds or not creds.valid:
+        if creds and creds.expired and creds.refresh_token:
+            creds.refresh(Request())
+        else:
+            flow = InstalledAppFlow.from_client_secrets_file(
+                'Run Files/client_secret.json', SCOPES)
+            creds = flow.run_local_server()
+        # Save the credentials for the next run
+        with open('token.pickle', 'wb') as token:
+            pickle.dump(creds, token)
 
-    store = file.Storage(credential_path)
-    credentials = store.get()
-    if not credentials or credentials.invalid:
-        flow = client.flow_from_clientsecrets(CLIENT_SECRET_FILE, SCOPES)
-        flow.user_agent = APPLICATION_NAME
-        if args: # TODO Why is this here?
-            credentials = tools.run_flow(flow, store, args)
-        else: # Needed only for compatibility with Python 2.6
-            credentials = tools.run(flow, store)
-        print 'Storing credentials to ' + credential_path
-    return credentials
+    return creds
 
 
 def create_sheets_api():
     # Returns a Sheets API service object
 
-    credentials = get_credentials()
-    http = credentials.authorize(httplib2.Http())
+    creds = get_credentials()
+    # http = credentials.authorize(httplib2.Http())
     discoveryUrl = ('https://sheets.googleapis.com/$discovery/rest?'
                     'version=v4')
-    service = build('sheets', 'v4', http=http,
-                              discoveryServiceUrl=discoveryUrl)
-
+    service = build('sheets', 'v4', credentials=creds)
+    global SHEETS_API
+    SHEETS_API = service
     return service
 
 
 def create_mail_api():
     # Returns a Sheets API service object
 
-    credentials = get_credentials()
-    http = credentials.authorize(httplib2.Http())
-    service = build('gmail', 'v1', http=http)
-
+    # credentials = get_credentials()
+    # http = credentials.authorize(httplib2.Http())
+    service = build('gmail', 'v1', credentials=get_credentials())
+    global MAIL_API
+    MAIL_API = service
     return service
 
 
-def get_range(range, sheet_id, sheet_api):
+def get_range(range, sheet_id, sheet_api, dimension='ROWS'):
     return sheet_api.spreadsheets().values().get(spreadsheetId=sheet_id, range=range,
-                                                 majorDimension='ROWS').execute().get('values', [])
+                                                 majorDimension=dimension).execute().get('values', [])
+
+
+def _create_message(sender, to, subject, text):
+    message = MIMEText(text)
+    message['to'] = to
+    message['from'] = sender
+    message['subject'] = subject
+    return {'raw': base64.urlsafe_b64encode(message.as_string())}
+
+
+def _create_draft(service, user_id, message_body):
+    try:
+        message = {'message': message_body}
+        draft = service.users().drafts().create(userId=user_id, body=message).execute()
+        return draft
+    except HttpError as error:
+        print 'An error occurred. Unable to write draft: %s' % error
+        return None
+
+
+def _send_draft(service, user_id, draft):
+    service.users().drafts().send(userId=user_id, body={ 'id':draft['id'] }).execute()
+
+
+def send_message(service, sender, to, subject, text):
+    message = _create_message(sender, to, subject, text)
+    draft = _create_draft(service, sender, message) #TODO Does sender work if not "me"?
+    _send_draft(service, sender, draft)
+
+
+if __name__ == '__main__':
+    construct()
