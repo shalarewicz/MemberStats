@@ -1,10 +1,11 @@
 # Need to install the date util library
 # pip install python-dateutil TODO Does this need to be done for everyone? Include in README
-from dateutil import parser
 from members import MEMBERS
-from stats import STAT_LABELS
+import stats
 from util import is_mbox
 import mailbox
+import config
+import util
 
 
 class Message(object):
@@ -36,7 +37,7 @@ class Message(object):
         if subject is None:
             self.subject = ""
         else:
-            self.subject = subject.replace('\n', '').replace('\r','')
+            self.subject = subject.replace('\n', '').replace('\r', '')
 
         from_address = message['From']
         if from_address is None:
@@ -45,10 +46,11 @@ class Message(object):
             self.from_address = from_address.lower()
         else:
             # Extract email address from string containing "<email>"
-            self.from_address = from_address[from_address.find("<") + 1, from_address.find(">")].lower()
+            self.from_address = from_address[from_address.find("<") + 1: from_address.find(">")].lower()
 
         self.counts = not (self.is_internal() or self.is_from_support())
 
+        # self.labels = message['X-Gmail-Labels'] # todo used when inbox queried directly
         labels = message['X-Gmail-Labels'].replace('\n', '').replace('\r', '')
         if labels is None:
             self.labels = []
@@ -57,9 +59,9 @@ class Message(object):
 
         date = message['Date']
         if date is not None:
-            self.date = parser.parse(date)
+            self.date = util.parse_date(date)
 
-    def _is_spam(self):
+    def is_spam(self):
         """
         Checks to see if the messages from address contains an address or substring indicative
         of a 'spam' message that can be ignored for stats. The following items are currently
@@ -68,18 +70,18 @@ class Message(object):
         :return: true if the address matches any know spam strings or if the address is the empty string
         """
         # TODO Move outside of class
-        spam = ["<MAILER-DAEMON@LNAPL005.HPHC.org>", "Mail Delivery System",
-                "dmrn_exceptions@dmrn.dhhq.health.mil", "<supportdesk@irbnet.org>", ""]
+        spam = ["MAILER-DAEMON@LNAPL005.HPHC.org", "Mail Delivery System",
+                "dmrn_exceptions@dmrn.dhhq.health.mil", "supportdesk@irbnet.org"]
         return any(s in self.from_address for s in spam)
 
-    def _is_idea(self):
+    def is_idea(self):
         """
         :return: True if the messages to address is to "ideas@irbet.org"
         """
         # TODO Move outside of class
-        return "<ideas@irbnet.org>" in self.to
+        return "ideas@irbnet.org" in self.to
 
-    def is_internal(self, address=from_address):
+    def is_internal(self):
         """
         :return: True if the Message's from address matches an IRBNet personal email address
         # TODO Why do we rule out all of these addresses??? What happens if we don't?
@@ -89,7 +91,7 @@ class Message(object):
                     "supportdesk@irbnet.org", "techsupport@irbnet.org", "report_heartbeat@irbnet.org",
                     "report_monitor@irbnet.org", "alerts@irbnet.org", "wizards@irbnet.org",
                     "reportmonitor2@irbnet.org", ]
-        return "irbnet.org" in address and all(x not in address for x in internal)
+        return "irbnet.org" in self.from_address and all(x not in self.from_address for x in internal)
 
     def is_to_from_support(self):
         # TODO Move outside of class
@@ -99,16 +101,16 @@ class Message(object):
         return "support@irbnet.org" in self.from_address
 
     def extract_labels(self):
-        stats = set()
+        statistics = set()
         members = set()
         for label in self.labels:
-            if label in STAT_LABELS:
-                stats.add(label)
+            if label in stats.STAT_LABELS:
+                statistics.add(label)
             if label in MEMBERS:
                 members.add(label)
-        return stats, members
+        return statistics, members
 
-    def get_thread_id(self):  # TODO Getters allow for easier changes in future and prevents rep exposure
+    def get_thread_id(self):
         return self.thread_id
 
     def get_labels(self):
@@ -126,9 +128,6 @@ class Message(object):
     def get_subject(self):
         return self.subject
 
-    def counts(self):
-        return self.counts
-
 
 class Thread(object):
 
@@ -142,11 +141,10 @@ class Thread(object):
 
         self.stat_labels, self.member_labels = message.extract_labels()
         self.good_thread = True
-        self.last_contact_date = None
-        self.oldest_date = None
-        if message.counts():
+        self.last_contact_date = None  # todo are dates besides oldest date even necessary?
+        self.oldest_date = message.get_date()
+        if message.counts:  # only update for messages not from support or an internal address
             self.last_contact_date = message.get_date()
-            self.oldest_date = message.get_date()
         self.check_in_date = None
         self.check_in = False  # TODO Remove and just ask if check_in_date is not None?
         self.non_ping = len(self.stat_labels) > 0
@@ -158,47 +156,54 @@ class Thread(object):
         self.message_count = 1
         self.checked = False
         self.closed = True
+        self.subject = message.get_subject()
         self._evaluate(message)
 
     def _evaluate(self, message):
         subject = message.get_subject()
-        if not self.non_ping and self.message_count == 2:
-            if "IRBNet Demo Request" in subject:
-                self.demo = True
-                self.good_thread = True
-            if "IRBNet Inquiry From" in subject:
-                self.inquiry = True
-                self.good_thread = True
+        if not self.non_ping:
+            if self.message_count == 2:
+                if "IRBNet Demo Request" in subject:
+                    self.demo = True
+                    self.good_thread = True
+                elif "IRBNet Inquiry From" in subject:
+                    self.inquiry = True
+                    self.good_thread = True
+                elif "New Organizations" in message.get_labels():
+                    stats.count_new_org()  # todo THIS SHOULD BE IN STATS
+                    self.new_org = True
+                    self.good_thread = True
             if "IRBNet Help Desk Inquiry" in subject:
-                if "noreply@irbnet.org" not in message.from_address():
+                if "noreply@irbnet.org" not in message.get_from_address():
                     self.message_count -= 1
                 self.vm = True
                 self.good_thread = True
-            if "New Organizations" in message.get_labels():
-                self.new_org = True
-                self.good_thread = True
-            if "Sales Ping" in message.get_labels:
+            if "Sales Pings" in message.get_labels():
                 self.sales_ping = True
                 self.good_thread = True
                 self.checked = True
         elif not self.checked:
-            if message.is_to_from_support() and "New Organizations" not in self.stat_labels:
+            if message.is_to_from_support() and not self.new_org:
                 self._should_it_count(message, "to and from Support")
-            elif (message.is_internal() or (message.from_support() and message.is_internal(message.get_to)
-                                            and "Sales Pings" not in self.stat_labels)):
+            elif (message.is_internal() or (message.is_from_support() and message.is_internal()
+                                            and "Sales Pings" not in message.get_labels())):
                 self._should_it_count(message, "Internal")
+        # Mark the thread as open if it meets the criteria
+        for l in Thread.closed_labels:
+            if any(l in label for label in message.get_labels()):
+                self.closed = False
 
-    def _should_it_count(self, message, type):
+    def _should_it_count(self, message, message_type):
         # TODO Move this out of the thread class and just return a list of threads that need to
         #  be checked
-        if not COUNT_ALL or COUNT_NONE:
+        if not (config.COUNT_ALL or config.COUNT_NONE):
             self.checked = True
-            print "\nFound ", type, " email. Should the following message be counted?\n",\
+            print "\nFound ", message_type, " email. Should the following message be counted?\n",\
                 "\nFrom: " + message.get_from_address(),\
                 "\nTo: " + message.get_to(),\
                 "\nSubject: " + message.get_subject(),\
-                "\nDate: " + message.get_oldest_date(),\
-                "\nLabels:" + message.get_date()
+                "\nDate: " + str(message.get_date()),\
+                "\nLabels:" + str(message.get_labels())
             answer = raw_input("Y/N?    ").lower()
             if answer == "y":
                 print "Thread will be counted."
@@ -208,8 +213,8 @@ class Thread(object):
                 self.good_thread = False
             else:
                 print "Answer not recognized."
-                self._should_it_count(message, type)
-        elif COUNT_NONE:
+                self._should_it_count(message, message_type)
+        elif config.COUNT_NONE:
             self.good_thread = False
         else:
             self.good_thread = True
@@ -221,6 +226,10 @@ class Thread(object):
         :return:
         """
         self.message_count += 1
+        if not self.good_thread and message.counts:
+            # TODO This prevents single emails from support to a member/ideas etc. from being counted and throwing
+            #  errors when checking the date.
+            self.good_thread = True
 
         new_stats, new_members = message.extract_labels()
         for label in new_stats:
@@ -230,21 +239,16 @@ class Thread(object):
             self.member_labels.add(label)
 
         new_date = message.date
-        if new_date < self.oldest_date:
-            self.oldest_date = new_date
+        if message.counts:
+            if self.oldest_date is None or new_date < self.oldest_date:
+                self.oldest_date = new_date
+            if self.last_contact_date is None or new_date > self.last_contact_date:
+                self.last_contact_date = new_date
 
-        # If the message is from a member update the last contact date
-        if message.counts() and (new_date > self.last_contact_date):
-            self.last_contact_date = new_date
-
-        if "check-in call" in message.get_labels():
+        if "check-in call" in message.get_labels():  # TODO do this for new threads and check for None
             self.check_in = True
             if self.check_in_date < new_date:
                 self.check_in_date = new_date
-
-        # Mark the thread as open if it meets the criteria
-        if self.closed and any(l in Thread.closed_labels for l in message.get_labels()):
-            self.closed = False
 
         self.non_ping = len(self.stat_labels) > 0
 
@@ -270,6 +274,12 @@ class Thread(object):
     def get_oldest_date(self):
         return self.oldest_date
 
+    def get_last_contact_date(self):
+        return self.last_contact_date
+
+    def get_check_in_date(self):
+        return self.check_in_date
+
     def get_count(self):
         return self.message_count
 
@@ -277,10 +287,13 @@ class Thread(object):
         return self.id
 
     def get_stats(self):
-        return self.stat_labels
+        return list(self.stat_labels)
 
     def get_members(self):
-        return self.member_labels
+        return list(self.member_labels)
+
+    def get_subject(self):
+        return self.subject
 
     def is_good(self):
         return self.good_thread
@@ -300,6 +313,12 @@ class Thread(object):
     def is_closed(self):
         return self.closed
 
+    def is_sales_ping(self):
+        return self.sales_ping
+
+    def is_check_in(self):
+        return self.check_in
+
     def __str__(self):
         return "Thread ID: " + self.id + ", Type: " + self.message_type() + ", Count: " + str(self.message_count)
 
@@ -309,18 +328,18 @@ class OpenInquiry:
     Represents and open and countable thread in the Support Inbox. Each
     thread is identified by the THREAD ID assigned by GMail.
     """
-    def __init__(self, id, subject):
-        self.id = id
+    def __init__(self, thread_id, subject):
+        self.id = thread_id
         self.subject = subject
 
     def __repr__(self):
         return "< " + str(self.id) + ", " + self.subject + ">"
 
-    def write(self):
-        return str(self.id) + "\n" + self.subject
-
     def __eq__(self, other):
         return isinstance(other, OpenInquiry) and self.id == other.id
+
+    def __hash__(self):
+        return hash(self.id)
 
     @staticmethod
     def from_file(filename):
@@ -332,15 +351,18 @@ class OpenInquiry:
         :return: set of all open inquires
         :raise: IOError if the file is not formatted properly or if the file cannot be read
         """
-        input = open(filename, 'r')
+        file_in = open(filename, 'r')
 
         threads = {}
-        while input:
-            id = input.readline().strip()
-            subject = input.readline().strip()
-            threads[id] = OpenInquiry(id, subject)
-
-        input.close()
+        while file_in:
+            current = file_in.readline()
+            if current is None:  # TODO Better way?
+                break
+            thread_id = file_in.readline().strip()
+            subject = file_in.readline().strip()
+            threads[thread_id] = OpenInquiry(thread_id, subject)
+            break
+        file_in.close()
         return threads
 
     @staticmethod
@@ -348,24 +370,29 @@ class OpenInquiry:
         inbox = {}
         if is_mbox(filename):
             for message in mailbox.mbox(filename):
-                id = message['X-GM-THRID']
+                thread_id = message['X-GM-THRID']
                 subject = message['Subject']
 
-                if not any([id, subject] is None):
-                    inbox[id] = subject
+                if any(x is None for x in [thread_id, subject]):
+                    pass
+                else:
+                    inbox[thread_id] = subject
         else:
             raise IOError(filename + " is not a valid mbox file")
 
         return inbox
 
     @staticmethod
-    def update(open_inquiries, filename):
+    def update(open_inquiries, new_open_inquiries, filename):
         num_open = 0
         num_closed = 0
         to_delete = []
         current = OpenInquiry._from_mbox(filename)
+
+        open_inquiries.update(new_open_inquiries)
+
         for thread in open_inquiries:
-            if thread.id in current:
+            if open_inquiries[thread].id in current:
                 num_open += 1
             else:
                 num_closed += 1
@@ -373,12 +400,25 @@ class OpenInquiry:
 
         for thread in to_delete:
             del open_inquiries[thread]
-            #TODO Check to make sure we don't have to return the updated dictionary
+            # TODO Check to make sure we don't have to return the updated dictionary
+        OpenInquiry._write_to_file(open_inquiries, 'Test\\open_out.txt')  # TODO change this to correct location
 
-        return num_open
-        return num_closed
-        STAT_LABELS["Total Open Inquires"] = num_open
-        STAT_LABELS["Existing Open Inquiries Closed"] = num_closed
+        stats.count_open(num_open)
+        stats.count_existing_closed(num_closed)
+        return num_open, num_closed
 
+    @staticmethod
+    def _write_to_file(open_inquiries, filename):
+        # Write information to open.txt
+        try:
+            out = open(filename, 'wb')
 
+            print "Recording open inquiries...\n"
+            for thread in open_inquiries:
+                out.write(open_inquiries[thread].id + '\n')
+                out.write(open_inquiries[thread].subject + '\n')
 
+            out.close()
+        except IOError, e:
+            print e
+            print 'Could not open ' + filename + ' for writing.'
