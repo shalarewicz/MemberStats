@@ -389,8 +389,6 @@ class OpenInquiry:
         to_delete = []
         current = OpenInquiry._from_mbox(filename)
 
-        open_inquiries.update(new_open_inquiries)
-
         for thread in open_inquiries:
             if open_inquiries[thread].id in current:
                 num_open += 1
@@ -400,8 +398,10 @@ class OpenInquiry:
 
         for thread in to_delete:
             del open_inquiries[thread]
-            # TODO Check to make sure we don't have to return the updated dictionary
+
         OpenInquiry._write_to_file(open_inquiries, 'Test\\open_out.txt')  # TODO change this to correct location
+
+        open_inquiries.update(new_open_inquiries)
 
         stats.count_open(num_open)
         stats.count_existing_closed(num_closed)
