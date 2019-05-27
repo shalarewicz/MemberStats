@@ -1,6 +1,7 @@
 # Utility
 from os.path import splitext
 from dateutil import parser, tz
+from sys import stderr
 
 
 def is_mbox(filename):
@@ -48,3 +49,7 @@ def get_a1_column_notation(i):
         return alphabet[j]
     else:
         return alphabet[j / 26 - 1] + alphabet[j % 26]
+
+
+def print_error(text):
+    print >> stderr.write(text)

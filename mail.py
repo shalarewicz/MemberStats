@@ -2,8 +2,6 @@
 # pip install python-dateutil TODO Does this need to be done for everyone? Include in README
 from members import MEMBERS
 import stats
-from util import is_mbox
-import mailbox
 import config
 import util
 
@@ -50,12 +48,7 @@ class Message(object):
 
         self.counts = not (self.is_internal() or self.is_from_support())
 
-        # self.labels = message['X-Gmail-Labels'] # todo used when inbox queried directly
-        labels = message['X-Gmail-Labels'].replace('\n', '').replace('\r', '')
-        if labels is None:
-            self.labels = []
-        else:
-            self.labels = labels.split(",")
+        self.labels = message['X-Gmail-Labels'] # todo used when inbox queried directly
 
         date = message['Date']
         if date is not None:
@@ -365,29 +358,27 @@ class OpenInquiry:
         file_in.close()
         return threads
 
-    @staticmethod
-    def _from_mbox(filename):
-        inbox = {}
-        if is_mbox(filename):
-            for message in mailbox.mbox(filename):
-                thread_id = message['X-GM-THRID']
-                subject = message['Subject']
 
-                if any(x is None for x in [thread_id, subject]):
-                    pass
-                else:
-                    inbox[thread_id] = subject
-        else:
-            raise IOError(filename + " is not a valid mbox file")
+    @staticmethod
+    def _from_message_list(messages):
+        inbox = {}
+        for message in messages:
+            thread_id = message['X-GM-THRID']
+            subject = message['Subject']
+
+            if any(x is None for x in [thread_id, subject]):
+                pass
+            else:
+                inbox[thread_id] = subject
 
         return inbox
 
     @staticmethod
-    def update(open_inquiries, new_open_inquiries, filename):
+    def update(open_inquiries, new_open_inquiries, inbox):
         num_open = 0
         num_closed = 0
         to_delete = []
-        current = OpenInquiry._from_mbox(filename)
+        current = OpenInquiry._from_message_list(inbox)
 
         for thread in open_inquiries:
             if open_inquiries[thread].id in current:

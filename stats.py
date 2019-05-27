@@ -4,6 +4,7 @@ import csv
 
 import config
 from mail import OpenInquiry
+import util
 
 import googleAPI
 from googleapiclient.errors import HttpError  # TODO This shouldn't need to be handled here.
@@ -352,39 +353,28 @@ def _enter_calls():
 
 
 def get_support_calls():
-    error = False
     try:
-        # TODO update sheet id with enrollment dash ID variable.
-        calls = googleAPI.get_range('Call_Info', '1r454wPNgU9f1p8zc2BCCdytZ65A7SX1vq1QxdDbgutk',
-                                    googleAPI.SHEETS_API, 'COLUMNS')
-        sessions = calls[0][0]
-        sales_calls = calls[1][0]
-        sales_demos = calls[2][0]
-        if len(calls) > 3:
-            demo_institutions = str(calls[3][0])
-        else:
-            demo_institutions = ""
-    except (HttpError, IndexError), e:
-        raw_input(
-            "There was an error (" + e + ") reading the Enrollment DashBoard. Please report and "
-            "press enter to continue.")
-        error = True
-    except: # Catches any unknown errors but allows the script to finish with manually entered data
-        e = sys.exc_info()[0]
-        print e  # todo write to log
-        raw_input(
-            "There was an unknown error reading the Enrollment DashBoard. Please report and "
-            "press enter to continue.")
-        error = True
-
-    finally:
-        if error:
+        calls = googleAPI.get_range('Call_Info', config.ENROLLMENT_DASHBOARD_ID, googleAPI.SHEETS_API, 'COLUMNS')
+    except HttpError, e:
+        print e
+        util.print_error("Error: Failed to read call info from Enrollment Dashboard. Please report.")
+        sessions, sales_calls, sales_demos, demo_institutions = _enter_calls()
+    else:
+        if len(calls) < 3:
             sessions, sales_calls, sales_demos, demo_institutions = _enter_calls()
+        else:
+            sessions = calls[0][0]
+            sales_calls = calls[1][0]
+            sales_demos = calls[2][0]
+            if len(calls) > 3:
+                demo_institutions = str(calls[3][0])
+            else:
+                demo_institutions = ""
 
-        CALL_STATS["Sessions"].set_count(sessions)
-        CALL_STATS["Sales Calls"].set_count(sales_calls)
-        CALL_STATS["Demos"].set_count(sales_demos)
-        CALL_STATS["Institutions"].set_count(demo_institutions)
+    CALL_STATS["Sessions"].set_count(sessions)
+    CALL_STATS["Sales Calls"].set_count(sales_calls)
+    CALL_STATS["Demos"].set_count(sales_demos)
+    CALL_STATS["Institutions"].set_count(demo_institutions)
 
 
 def draft_message(cutoff):
@@ -440,4 +430,17 @@ def update_weekly_support_stats(service, sheet_id):
     values.extend(add_stats(PING_STATS))
     values.extend(add_stats(TOTAL_STATS))
     values.extend(add_stats(CALL_STATS))
-    googleAPI.add_column(values, service, sheet_id, 2, 3, 0, 39)
+    try:
+        googleAPI.add_column(values, service, sheet_id, 2, 3, 0, 39)
+    except HttpError:
+        util.print_error("Failed to update Weekly Support Stats. ")
+        try:
+            out = csv.writer(open('stats.csv', 'w'))
+            with out:
+                for value in values:
+                    out.writeln(value)
+            print "Use stats.csv to update Weekly Support Stats Sheet"
+        except IOError:
+            util.print_error("Failed to write stats.csv. See stats below.")
+            for value in values:
+                print value

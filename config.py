@@ -1,25 +1,10 @@
 import argparse
-import os.path
 from oauth2client import tools  # TODO can probably remove this
-
-
-def is_mbox_file(fname):
-    """
-    :param fname: filename
-    :return: true if fname is an mbox file.
-    """
-    ext = os.path.splitext(fname)[1][1:]
-    if not ext == "mbox":
-        parser.error("Not a valid '.mbox' file")
-    return fname
 
 
 def parser():
     # Build args parser to validate mbox file-type and accept optional arguments
     parse = argparse.ArgumentParser(description='Run weekly stats', parents=[tools.argparser])
-
-    # Required Argument: filename
-    parse.add_argument("mbox_file", type=lambda s: is_mbox_file(s), help="mbox file for which stats will be gathered")
 
     # Optional: -i 1000 will print every 1000 email to help track progress
     parse.add_argument("-i", type=int, default=0, help="print every ith email read")
@@ -30,7 +15,6 @@ def parser():
     group.add_argument("-n", "--none", action="store_true", help="count no internal threads")
     group.add_argument("-s", "--skip", action="store_true",
                        help="skip thread counting. Use to test other parts of script")
-    parse.add_argument("-k", "--keep", action="store_true", help="keep mbox files when script has finished")
     parse.add_argument("-t", "--test", action="store_true", help="use test sheets not production sheets")
 
     return parse
@@ -52,7 +36,6 @@ def eval_test():
 
 def print_param():
     print "PARAMETERS:"
-    print "    STATS FILE: " + MBOX
     if COUNT_ALL:
         print "    COUNT_ALL: All internal threads will be counted"
     if COUNT_NONE:
@@ -61,8 +44,6 @@ def print_param():
         print "    DISPLAY EVERY: Every " + str(COUNT_EVERY) + " emails"
     if SKIP:
         print "    SKIP: No threads will be counted. "
-    if KEEP:
-        print "    KEEP: MBOX files will not be deleted"
     if TEST:
         print "    TEST: Test sheets will be used rather than production sheets"
     else:
@@ -70,12 +51,10 @@ def print_param():
 
 
 _args = parser().parse_args()
-MBOX = _args.mbox_file
 COUNT_ALL = _args.all
 COUNT_EVERY = _args.i
 COUNT_NONE = _args.none
 SKIP = _args.skip
-KEEP = _args.keep
 TEST = _args.test
 
 # Production Sheets
