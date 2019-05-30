@@ -233,10 +233,10 @@ class Thread(object):
                 self.checked = True
         elif not self.checked:
             if message.is_to_from_support() and not self.new_org:
-                self._should_it_count(message, "to and from Support")
+                self.should_it_count(message, "to and from Support")
             elif (message.is_internal() or
                   (message.is_from_support() and message.is_internal() and not self.sales_ping)):
-                self._should_it_count(message, "Internal")
+                self.should_it_count(message, "Internal")
 
         if "check-in call" in message.get_labels():
             if self.check_in_date is None or self.check_in_date < message.get_date():
@@ -246,7 +246,7 @@ class Thread(object):
             if any(l in label for label in message.get_labels()):
                 self.closed = False
 
-    def _should_it_count(self, message, message_type):
+    def should_it_count(self, message, message_type, override=False):
         """
         Prints basic message information and asks the user if a thread should count.
         Acceptable user responses include 'Y' | 'y' | 'N' | 'n'
@@ -261,9 +261,11 @@ class Thread(object):
             Message from which information is extracted.
         :param message_type: str 'Support' | 'Internal
             Message type printed to provide user with more information.
+        :param override: boolean
+            True if system setting for COUNT_ALL and COUNT_NONE should be ignored and thread should be checked.
         :return: None
         """
-        if not (config.COUNT_ALL or config.COUNT_NONE):
+        if override or not (config.COUNT_ALL or config.COUNT_NONE):
             self.checked = True
             print "\nFound ", message_type, " email. Should the following message be counted?\n",\
                 "\nFrom: " + message.get_from_address(),\
@@ -280,7 +282,7 @@ class Thread(object):
                 self.good_thread = False
             else:
                 print "Answer not recognized."
-                self._should_it_count(message, message_type)
+                self.should_it_count(message, message_type)
         elif config.COUNT_NONE:
             self.good_thread = False
         else:
@@ -409,10 +411,11 @@ class OpenInquiry:
         :return: dictionary of all open inquires {thread_id : OpenInquiry}
         :raise: IOError if the file cannot be read
         """
-        file_in = open(filename, 'r')  # TODO Build from openInbox.py if file not found.
-
+        file_in = open(filename, 'r')
+        print "from file"
         threads = {}
         while file_in:
+            print "reading"
             current = file_in.readline()
             if current is None:  # TODO Better way?
                 break
@@ -442,6 +445,41 @@ class OpenInquiry:
                 inbox[thread_id] = subject
 
         return inbox
+
+    @staticmethod
+    def from_current_inbox(inbox):
+        """
+        Builds a dictionary of open inquiries from a list of GMail messages.
+        :param inbox: A list of GMail messages. Not a list of mail.Message types.
+        :return: {Thread ID: OpenInquiry} for currently open and good threads.
+        """
+        threads = {}
+        for msg in inbox:
+            message = Message(msg)
+            thread_id = message.get_thread_id()
+            if thread_id in threads:
+                if threads[thread_id].is_good():
+                    threads[thread_id].add_message(message)
+            else:
+                threads[thread_id] = Thread(message)
+
+            if not threads[thread_id].checked:
+                if message.is_to_from_support():
+                    threads[thread_id].should_it_count(message, 'to and from Support', True)
+                elif message.is_internal():
+                    threads[thread_id].should_it_count(message, 'internal', True)
+
+            for l in config.OPEN_LABELS:
+                if any(l in label for label in message.get_labels()):
+                    threads[thread_id].closed = False
+
+        open_inquiries = {}
+        for thread in threads:
+            trd = threads[thread]
+            if trd.is_good() and not trd.is_closed():
+                open_inquiries[trd.get_id()] = OpenInquiry(trd.get_id(), trd.get_subject())
+
+        return open_inquiries
 
     @staticmethod
     def update(open_inquiries, new_open_inquiries, inbox):

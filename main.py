@@ -1,5 +1,3 @@
-
-import sys
 import csv
 import time
 
@@ -34,14 +32,6 @@ except HttpError, e:
     util.print_error("Error: Failed to read Admin data. Please report and resolve. Then re-run stats.")
     raise e
 
-try:
-    open_inquiries = mail.OpenInquiry.from_file("config/open.txt")
-except IOError:
-    # TODO If open.txt not found reconstruct here using openInbox.py
-    print "ERROR: Could not read open.txt. Please ensure the file is formatted properly.\n", \
-            "THREAD_ID\n," "SUBJECT"
-    sys.exit()
-
 cutoff = util.get_cutoff_date()
 
 messages = {}
@@ -64,7 +54,22 @@ if not config.SKIP:
         fmail_writer = csv.writer(fmail_out)
         fmail_writer.writerow(['Thread ID', 'Date', 'From', 'To', 'Subject', 'Labels'])
 
+    inbox = googleAPI.get_messages(googleAPI.SUPPORT_MAIL_API, "me", "label:Inbox")
+
+    try:
+        open_inquiries = mail.OpenInquiry.from_file("config/open.txt")
+    except IOError:
+        util.print_error('ERROR: config/open.txt not found. Please check to see if the config folder contains open.txt')
+        print 'This file will need to be reconstructed. You will be asked to go through the current inbox to rebuild ' \
+              'the file.'
+        print 'Alternatively, you may locate/restore the prior version of open.txt to the config folder and ' \
+              're-run the script. This is recommended.'
+        raw_input("Press enter to rebuild the file OR exit the script to locate and restore the file.")
+        open_inquiries = mail.OpenInquiry.from_current_inbox(inbox)
+        print 'Done reading inbox for open inquiries.'
+
     gmail_messages = googleAPI.get_messages(googleAPI.SUPPORT_MAIL_API, 'me', 'label:stats')
+
     for message in gmail_messages:
         msg = mail.Message(message)
         msg_id = msg.get_thread_id()
@@ -116,7 +121,6 @@ if not config.SKIP:
                     member_data[mem].update_check_in(trd.get_check_in_date())
 
     new_open_inquires = stats.count_stats(threads, member_data)
-    inbox = googleAPI.get_messages(googleAPI.SUPPORT_MAIL_API, "me", "label:Inbox")
     num_open, num_closed = mail.OpenInquiry.update(open_inquiries, new_open_inquires, inbox)
     stats.count_open(num_open)
     stats.count_existing_closed(num_closed)

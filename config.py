@@ -121,10 +121,10 @@ def print_param():
         print "    DISPLAY EVERY: Every " + str(COUNT_EVERY) + " emails"
     if SKIP:
         print "    SKIP: No threads will be counted. "
-    if TEST:
-        print "    TEST: Test sheets will be used rather than production sheets"
     if DEBUG:
         print "    DEBUG: Will write csv logs for mail and stat counting"
+    if TEST:
+        print "    TEST: Test sheets will be used rather than production sheets"
     else:
         print "    PRODUCTION: Production sheets will be used rather than test sheets"
 
