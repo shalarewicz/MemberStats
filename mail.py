@@ -412,10 +412,8 @@ class OpenInquiry:
         :raise: IOError if the file cannot be read
         """
         file_in = open(filename, 'r')
-        print "from file"
         threads = {}
         while file_in:
-            print "reading"
             current = file_in.readline()
             if current is None:  # TODO Better way?
                 break

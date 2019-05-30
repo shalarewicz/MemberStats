@@ -1,5 +1,6 @@
 import time
 import csv
+import datetime
 
 from googleapiclient.errors import HttpError
 import googleAPI
@@ -528,14 +529,20 @@ def add_stats(dictionary):
     """
     values = []
     for item in _sort_stats(dictionary.keys(), dictionary):
-        values.append(dictionary[item].get_count())
+        if type(dictionary[item].get_count()) is str:
+            values.append(((dictionary[item].get_count()), 'STRING'))
+        else:
+            values.append(((dictionary[item].get_count()), 'NUMBER'))
+
     return values
 
 
-def update_weekly_support_stats(service, sheet_id):
+def update_weekly_support_stats(service, spreadsheet_id, sheet_id=0):
     """
     Updates the specified sheet with aggregated statistics info by inserting a new column between columns B and C.
     The new column has the format.
+        Date
+
         STAT_LABELS
 
 
@@ -547,28 +554,32 @@ def update_weekly_support_stats(service, sheet_id):
         CALL_STATS
 
     :param service: Authorized Google Sheets service to access the Sheets APU
+    :param spreadsheet_id: Spreadsheet ID for the sheet that will be updated.
     :param sheet_id: Google Sheet ID for the sheet that will be updated.
     :return: None
     """
-    values = []
+
+    values = [(util.serial_date(datetime.datetime.today()), 'DATE')]
     values.extend(add_stats(STAT_LABELS))
-    values.extend(["", ""])
+    values.extend([("", 'STRING'), ("", 'STRING')])
     values.extend(add_stats(PING_STATS))
-    values.extend(["", ""])
+    values.extend([("", 'STRING'), ("", 'STRING')])
     values.extend(add_stats(TOTAL_STATS))
-    values.append("")
+    values.append(("", 'STRING'))
     values.extend(add_stats(CALL_STATS))
+    insert_column_request = googleAPI.insert_column_request(sheet_id, values, 0, 39, 2, 3)
     try:
-        googleAPI.add_column(values, service, sheet_id, 2, 3, 0, 39)
+        googleAPI.spreadsheet_batch_update(service, spreadsheet_id, insert_column_request)
     except HttpError:
         util.print_error("Failed to update Weekly Support Stats. ")
         try:
-            out = csv.writer(open('stats.csv', 'w'))
-            with out:
-                for value in values:
-                    out.writeln(value)
+            out_file = open('stats.csv', 'w')
+            out = csv.writer(out_file)
+            for (v, t) in values:
+                out.writerow([v])
             print "Use stats.csv to update Weekly Support Stats Sheet"
+            out_file.close()
         except IOError:
             util.print_error("Failed to write stats.csv. See stats below.")
-            for value in values:
-                print value
+            for (v, t) in values:
+                print v

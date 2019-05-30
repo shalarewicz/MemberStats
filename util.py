@@ -66,3 +66,15 @@ def print_error(text):
     :return: None
     """
     print >> stderr.write('\n'+text+'\n')
+
+
+def serial_date(date):
+    """
+    Converts date to a serial date as days since December 30th, 1899.
+    :param date: datetime date
+    :return: int Days since December 30th, 1899. Does not consider the time of day.
+    """
+    if date.tzinfo is None:
+        date = date.replace(tzinfo=tz.tzoffset('EDT', -14400))
+    zero = parse_date('12/30/1899')
+    return (date - zero).days

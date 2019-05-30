@@ -1,5 +1,4 @@
 import os
-import time
 import base64
 from email.mime.text import MIMEText
 import pickle
@@ -102,104 +101,89 @@ def get_range(rng, sheet_id, sheet_api, dimension='ROWS', values_only=True):
         raise e
 
 
-def _add_column_value(column, value, value_type):
+def _new_cell(v, t):
     """
-    Modifies the column by adding appending new value
-    :param column: Column to which the value is added.
-    :param value: New value. Must be a single value. TODO What if its a list?
-    :param value_type: value type TODO Get possible types from sheets api
-    :return: modified columns with new value at the end of the column.
+    Creates a new CellData object
+    :param v, t: (value, type)
+        A tuple consisting of (value, type).
+        type: 'DATE', 'NUMBER', 'STRING'. If type is not specified or not one of the types specifed the value will be
+        written as a string.
+        DATE values must be given as a serial number. This can be calculated as the days since 12/30/1899. With partial
+        days counting as a decimal.
+    :return: a CellData object
     """
-    new = {
-            "values": [{
-                     "userEnteredValue": {value_type: value}
-                     #  FIXME This results in dates appearing as string. Need to write dates as serial numbers.
-                     #   Google calculates dates as days since December 30th, 1899. just need to subtract.
-                     #   Add below to format as date
-                     #   add "userEnteredFormat": {
-                     #                   "numberFormat": {
-                     #                     "type": "DATE"
-                     #                   }
-                     }]
-            }
+    cell_value = {}
+    if t == 'DATE':
+        cell_value['userEnteredValue'] = {'numberValue': v}
+        cell_value['userEnteredFormat'] = {"numberFormat": {"type": "DATE"}}
+    elif t == 'NUMBER':
+        cell_value['userEnteredValue'] = {'numberValue': v}
+    else:
+        cell_value['userEnteredValue'] = {'stringValue': v}
 
-    column.append(new)
-
-    return column
+    return cell_value
 
 
-def _create_column(lst):
+def _new_row(values):
     """
-    Builds a new google sheet column of width 1 from the lst of values.
-    :param lst: List of column values. Can be either string or number values. Items in the list must be single values
-    :return: a column containing all values.
+    Creates a new RowData object from a list of values.
+    :param values: (value, type)
+        A list of tuples consisting of (value, type).
+        type: 'DATE', 'NUMBER', 'STRING'
+    :return: A new RowData object.
     """
-    column = []
+    row_values = []
+    for (value, t) in values:
+        cell = _new_cell(value, t)
+        row_values.append(cell)
 
-    column = _add_column_value(column, time.strftime("%m/%d/%Y"), "stringValue")
-
-    for item in lst:
-        if type(item) is int:
-            value_type = "numberValue"
-        else:
-            value_type = "stringValue"
-
-        _add_column_value(column, item, value_type)
-
-    return column
+    return {'values': row_values}
 
 
-def _new_column_request(column, col_start, col_end, row_start, row_end):
+def _new_column(values):
     """
-    
-    :param column:
-    :param col_start:
-    :param col_end:
-    :param row_start:
-    :param row_end:
+    Creates a new column object from a list of values.
+    :param values: (value, type)
+        A list of tuples consisting of (value, type).
+        type: 'DATE', 'NUMBER', 'STRING'
+    :return: lst(RowData) representing the column
+    """
+    column_values = []
+    for value in values:
+        column_values.append(_new_row([value]))
+    return column_values
+
+
+def insert_column_request(sheet_id, values, start_row, end_row, start_col, end_col, inherit=False):
+    """
+    Creates two spreadsheets.batchUpdate requests that insert a new column into the specified sheet.
+    :param sheet_id: Sheet ID for the sheet on which the column will be inserted.
+    :param values: (value, type)
+        A list of tuples consisting of (value, type).
+        type: 'DATE', 'NUMBER', 'STRING'
+    :param start_row: int start row inclusive of range that should be sorted.
+    :param end_row: int end row exclusive of range that should be sorted.
+    :param start_col: int start column inclusive of range that should be sorted.
+    :param end_col: int end column exclusive of range that should be sorted.
+    :param inherit: boolean Whether column properties should be extended from the column before or
+     after the newly inserted column.
     :return:
     """
-    # TODO this uses a bathupdate request to execute one request only.
-    #  update this to create a single request. then execute all requests with
-    #  batch update in case one fails.
-    return {
-        "requests": [
-            {
-                "insertDimension": {
-                    "inheritFromBefore": False,
-                    "range": {
-                        "dimension": "COLUMNS",
-                        "startIndex": col_start,
-                        "endIndex": col_end,
-                        "sheetId": 0
-                    }
-                }
-            },
-            {
-                "updateCells": {
-                    "range": {
-                        "startRowIndex": row_start,
-                        "endRowIndex": row_end,
-                        "startColumnIndex": col_start,
-                        "endColumnIndex": col_end,
-                        "sheetId": 0
-                    },
-                    "rows": column,
-                    "fields": "*"
+    column = _new_column(values)
+    insert_request = {
+            "insertDimension": {
+                "inheritFromBefore": inherit,
+                "range": {
+                    "dimension": "COLUMNS",
+                    "startIndex": start_col,
+                    "endIndex": end_col,
+                    "sheetId": sheet_id
                 }
             }
-        ]
-    }
+        }
+    update = update_request(sheet_id, column, start_row, end_row, start_col, end_col)
 
-
-def add_column(lst, service, sheet_id, col_start, col_end, row_start, row_end):
-    column = _create_column(lst)
-    request = _new_column_request(column, col_start, col_end, row_start, row_end)
-    try:
-        service.spreadsheets().batchUpdate(spreadsheetId=sheet_id, body=request).execute()
-    except HttpError, e:
-        print_error('Error: add column to sheet: ' + str(sheet_id))
-        raise e
+    return [insert_request, update]
 
 
 def _create_row(values):
@@ -249,15 +233,15 @@ def update_request(sheet_id, row_data, start_row, end_row, start_col, end_col, )
     """
     return {
       "updateCells": {
-        "range": {
-            "sheetId": sheet_id,
-            "startRowIndex": start_row,
-            "endRowIndex": end_row,
-            "startColumnIndex": start_col,
-            "endColumnIndex": end_col
-        },
         "rows": row_data,
-        "fields": "*"
+        "fields": "*",
+        "range": {
+                   "sheetId": sheet_id,
+                   "startRowIndex": start_row,
+                   "endRowIndex": end_row,
+                   "startColumnIndex": start_col,
+                   "endColumnIndex": end_col
+               }
       }
     }
 
@@ -310,7 +294,8 @@ def duplicate_sheet_request(sheet_id, new_title, insert_index):
 
 def delete_named_range_request(service, spreadsheet_id, rng):
     """
-    Construct a series of spreadsheets.batchUpdate requests to remove the named ranges with the given name from the spreadsheet.
+    Construct a series of spreadsheets.batchUpdate requests to remove the named ranges with the given name from
+    the spreadsheet.
     :param service: Authorized Google Sheets service
     :param spreadsheet_id: str The spreadsheet to apply the updates to.
     :param rng: lst(str) List of named ranges to be removed.
@@ -367,10 +352,10 @@ def remove_formulas(service, spreadsheet_id, rng):
 
 def clear_ranges(service, spreadsheet_id, ranges):
     """
-
-    :param service:
-    :param spreadsheet_id:
-    :param ranges:
+    Clears the specified ranges.
+    :param service: Authorized Google Sheets service
+    :param spreadsheet_id: Spreadsheet on which the ranges will be cleared.
+    :param ranges: Ranges to be cleared in A1 Notation
     :return:
     """
     request_body = {'ranges': ranges}
@@ -379,8 +364,6 @@ def clear_ranges(service, spreadsheet_id, ranges):
     except HttpError, e:
         print_error('Error: Failed to clear ranges: ' + str(ranges) + 'on sheet: ' + str(spreadsheet_id))
         raise e
-
-
 
 
 # Mail API Methods
