@@ -1,39 +1,42 @@
 import os
-
+import time
+import base64
+from email.mime.text import MIMEText
+import pickle
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
-from email.mime.text import MIMEText
-import base64
-import pickle
-import time
+
+from util import print_error
 try:
     from google_auth_oauthlib.flow import InstalledAppFlow
     from google.auth.transport.requests import Request
 except ImportError, ie:
-    print "ERROR: google.auth not found. Install the google.auth modules by typing "
-    print "pip install --upgrade google-api-python-client google-auth-httplib2 google-auth-oauthlib " \
-          "into the command line"
+    print_error("Import Error: google.auth not found. See steps below")
+    print "Install the google.auth modules by typing. " \
+          "'pip install --upgrade google-api-python-client google-auth-httplib2 google-auth-oauthlib'" \
+          "into the command line then re-run stats"
+    raise ie
 
-from util import print_error
 
 # Obtain Authentication or Credentials to access Google Sheets
 
 # If modifying these scopes, delete your previously saved credentials
-# at ~/.credentials/googleapis.com-python-quickstart.json
+# at ~/.credentials/token.pickle and support_token.pickle
 SCOPES = ['https://www.googleapis.com/auth/spreadsheets', 'https://www.googleapis.com/auth/gmail.compose']
 SUPPORT_SCOPE = ['https://www.googleapis.com/auth/gmail.readonly']
-CLIENT_SECRET_FILE = 'Run Files\\client_secret.json'
+CLIENT_SECRET_FILE = 'config/client_secret.json'
 APPLICATION_NAME = 'Google API for Stats'
 
 
 def _get_credentials(support=False):
-    """Gets valid user credentials from storage.
+    """
+    Gets valid user credentials from storage.
 
     If nothing has been stored, or if the stored credentials are invalid,
     the OAuth2 flow is completed to obtain the new credentials.
 
-    Returns:
-        Credentials, the obtained credential.
+    :param support: True if credentials for Support should be obtained (default = False)
+    :return: Credentials, the obtained credential.
     """
     creds = None
     # The file token.pickle stores the user's access and refresh tokens, and is
@@ -44,7 +47,7 @@ def _get_credentials(support=False):
         credential = '/support_token.pikle'
         scope = SUPPORT_SCOPE
     else:
-        credential = 'token.pickle'
+        credential = '/token.pickle'
         scope = SCOPES
 
     credential_dir = os.path.join(home_dir, '.credentials')
@@ -55,12 +58,12 @@ def _get_credentials(support=False):
         with open(credential_path, 'rb') as token:
             creds = pickle.load(token)
     if not creds or not creds.valid:
-        if support:
-            raw_input("You will now be asked to authenticate access for the Support Inbox. "
-                      "Please log in as support when prompted. Press enter to continue.")
         if creds and creds.expired and creds.refresh_token:
             creds.refresh(Request())
         else:
+            if support:
+                raw_input("You will now be asked to authenticate access for the Support Inbox. "
+                          "Please log in as support when prompted. Press enter to continue.")
             flow = InstalledAppFlow.from_client_secrets_file(
                 CLIENT_SECRET_FILE, scope)
             creds = flow.run_local_server()
@@ -99,39 +102,24 @@ def get_range(rng, sheet_id, sheet_api, dimension='ROWS', values_only=True):
         raise e
 
 
-def _create_message(sender, to, subject, text):
-    message = MIMEText(text)
-    message['to'] = to
-    message['from'] = sender
-    message['subject'] = subject
-    return {'raw': base64.urlsafe_b64encode(message.as_string())}
-
-
-def _create_draft(service, user_id, message_body):
-    try:
-        message = {'message': message_body}
-        draft = service.users().drafts().create(userId=user_id, body=message).execute()
-        return draft
-    except HttpError as error:
-        print_error('Error: Failed to create. Please see stats_email.txt for draft and send manually.')
-        raise error
-
-
-def _send_draft(service, user_id, draft):
-    service.users().drafts().send(userId=user_id, body={'id': draft['id']}).execute()
-
-
-def send_message(service, sender, to, subject, text):
-    message = _create_message(sender, to, subject, text)
-    draft = _create_draft(service, sender, message)  # TODO Does sender work if not "me"?
-    _send_draft(service, sender, draft)
-
 def _add_column_value(column, value, value_type):
-    # The call addStatValueToColumn(int i, str valueType) is used to create a Sheets API compatible request
-    # for each stat. This method essentially builds a column.
+    """
+    Modifies the column by adding appending new value
+    :param column: Column to which the value is added.
+    :param value: New value. Must be a single value. TODO What if its a list?
+    :param value_type: value type TODO Get possible types from sheets api
+    :return: modified columns with new value at the end of the column.
+    """
     new = {
             "values": [{
                      "userEnteredValue": {value_type: value}
+                     #  FIXME This results in dates appearing as string. Need to write dates as serial numbers.
+                     #   Google calculates dates as days since December 30th, 1899. just need to subtract.
+                     #   Add below to format as date
+                     #   add "userEnteredFormat": {
+                     #                   "numberFormat": {
+                     #                     "type": "DATE"
+                     #                   }
                      }]
             }
 
@@ -140,9 +128,12 @@ def _add_column_value(column, value, value_type):
     return column
 
 
-# Creates a list of requests for the sheets API. Each entry in statsColumn in a row in the google sheet
-# each value in "values" is a cell in the row.
 def _create_column(lst):
+    """
+    Builds a new google sheet column of width 1 from the lst of values.
+    :param lst: List of column values. Can be either string or number values. Items in the list must be single values
+    :return: a column containing all values.
+    """
     column = []
 
     column = _add_column_value(column, time.strftime("%m/%d/%Y"), "stringValue")
@@ -159,10 +150,18 @@ def _create_column(lst):
 
 
 def _new_column_request(column, col_start, col_end, row_start, row_end):
+    """
+    
+    :param column:
+    :param col_start:
+    :param col_end:
+    :param row_start:
+    :param row_end:
+    :return:
+    """
     # TODO this uses a bathupdate request to execute one request only.
     #  update this to create a single request. then execute all requests with
     #  batch update in case one fails.
-    # TODO Determine if row indices are required or change to be more generic new range?
     return {
         "requests": [
             {
@@ -181,9 +180,9 @@ def _new_column_request(column, col_start, col_end, row_start, row_end):
                     "range": {
                         "startRowIndex": row_start,
                         "endRowIndex": row_end,
-                        "sheetId": 0,
                         "startColumnIndex": col_start,
-                        "endColumnIndex": col_end
+                        "endColumnIndex": col_end,
+                        "sheetId": 0
                     },
                     "rows": column,
                     "fields": "*"
@@ -210,19 +209,44 @@ def _create_row(values):
     }
 
 
-def update_range(service, sheet_id, rng, values,
+def update_range(service, spreadsheet_id, rng, values,
                  value_input='USER_ENTERED', value_render='FORMATTED_VALUE'):
+    """
+    Attempts to update the specified range
+    :param service: Authorized Google Sheets service
+    :param spreadsheet_id: Spreadsheet ID for the sheet that should be updated.
+    :param rng: A1 Notation range for sheet that will be updated.
+    :param values: New values
+    :param value_input: str Determines how input data should be interpreted (default='USER_ENTERED'
+     'RAW' : The values the user has entered will not be parsed and will be stored as-is.
+     'USER_ENTERED' : The values will be parsed as if the user typed them into the UI.
+    :param value_render: str Determines how values should be rendered in the output. (default='FORMATTED_VALUE'
+        'FORMATTED_VALUE' : Values will be calculated & formatted according to the cell's formatting
+        'UNFORMATTED_VALUE' : Values will be calculated, but not formatted.
+        'FORMULA' : Values will not be calculated.
+    :return:
+    """
     request_body = _create_row(values)
     try:
-        service.spreadsheets().values().update(spreadsheetId=sheet_id, body=request_body,
+        service.spreadsheets().values().update(spreadsheetId=spreadsheet_id, body=request_body,
                                                range=rng, valueInputOption=value_input,
                                                responseValueRenderOption=value_render).execute()
     except HttpError, e:
-        print_error('Error: Failed to update range: ' + str(rng) + ' on sheet: ' + str(sheet_id))
+        print_error('Error: Failed to update range: ' + str(rng) + ' on sheet: ' + str(spreadsheet_id))
         raise e
 
 
 def update_request(sheet_id, row_data, start_row, end_row, start_col, end_col, ):
+    """
+    Creates a spreadsheets.batchUpdate request to update the specified range
+    :param sheet_id: str Sheet on which data will be sorted.
+    :param row_data: RowData object containing data about each cell in a row.
+    :param start_row: int start row inclusive of range that should be sorted.
+    :param end_row: int end row exclusive of range that should be sorted.
+    :param start_col: int start column inclusive of range that should be sorted.
+    :param end_col: int end column exclusive of range that should be sorted.
+    :return: updateCells request
+    """
     return {
       "updateCells": {
         "range": {
@@ -238,10 +262,21 @@ def update_request(sheet_id, row_data, start_row, end_row, start_col, end_col, )
     }
 
 
-def sort_request(sheet, sort_index, start_row, end_row, start_col, end_col, order='ASCENDING'):
+def sort_request(sheet_id, sort_index, start_row, end_row, start_col, end_col, order='ASCENDING'):
+    """
+    Creates a spreadsheets.batchUpdate request that sorts data in rows based on a sort order per column.
+    :param sheet_id: str Sheet on which data will be sorted.
+    :param sort_index: int the column which should be sorted
+    :param start_row: int start row inclusive of range that should be sorted.
+    :param end_row: int end row exclusive of range that should be sorted.
+    :param start_col: int start column inclusive of range that should be sorted.
+    :param end_col: int end column exclusive of range that should be sorted.
+    :param order: str 'ASCENDING' | 'DESCENDING'
+    :return: A sortRange Request
+    """
     return {"sortRange": {
                 "range": {
-                    "sheetId": sheet,
+                    "sheetId": sheet_id,
                     "startRowIndex": start_row,
                     "endRowIndex": end_row,
                     "startColumnIndex": start_col,
@@ -256,25 +291,171 @@ def sort_request(sheet, sort_index, start_row, end_row, start_col, end_col, orde
             }}
 
 
-def get_message(service, user_id, msg_id, labels):
-    to_find = ['To', 'From', 'Subject', 'Date']
+def duplicate_sheet_request(sheet_id, new_title, insert_index):
+    """
+    Constructs a spreadsheets.batchUpdate request to duplicate the contents of a sheet
+    :param sheet_id: The sheet to duplicate
+    :param new_title: Title of the duplicated sheet
+    :param insert_index: The zero-based index where the new sheet should be inserted. The index of all sheets after
+    this will be incremented.
+    :return: A duplicateSheet request
+    """
+    return {'duplicateSheet': {
+        'sourceSheetId': sheet_id,
+        'insertSheetIndex': insert_index,
+        'newSheetName': new_title
+        }
+    }
+
+
+def delete_named_range_request(service, spreadsheet_id, rng):
+    """
+    Construct a series of spreadsheets.batchUpdate requests to remove the named ranges with the given name from the spreadsheet.
+    :param service: Authorized Google Sheets service
+    :param spreadsheet_id: str The spreadsheet to apply the updates to.
+    :param rng: lst(str) List of named ranges to be removed.
+    :return: A list of deleteNamedRange requests
+    :raise HttpError: If any of the ranges are not present in the sheet.
+    """
     try:
-        response = service.users().messages().get(userId=user_id, id=msg_id, format='metadata').execute()
-        message = {'X-GM-THRID': response['threadId'], 'X-Gmail-Labels': response['labelIds']}
-        message['X-Gmail-Labels'] = map(lambda l: labels[l], message['X-Gmail-Labels'])
+        named_ranges = service.spreadsheets().get(spreadsheetId=spreadsheet_id, ranges=rng).execute().get(
+            'namedRanges', [])
 
-        while len(to_find) > 0:
-            found = next(header for header in response['payload']['headers'] if header['name'] in to_find)
-            encoded = found['value'].encode('ascii', 'ignore')
-            message[found['name']] = encoded
-            to_find.remove(found['name'])
+        request_body = []
+        for named_range in named_ranges:
+            range_id = named_range['namedRangeId']
+            request_body.append({"deleteNamedRange": {"namedRangeId": range_id}})
 
-        return message
-    except StopIteration, se:
-        print "Message incomplete: missing " + str(to_find)
+        return request_body
     except HttpError, e:
-        print_error('Error: Failed to retrieve message: ' + msg_id)
+        print_error('Error: Failed to retrieve named ranges from range: ' + str(rng) +
+                    'on sheet: ' + str(spreadsheet_id))
         raise e
+
+
+def spreadsheet_batch_update(service, spreadsheet_id, requests):
+    """
+    Applies one or more updates to the specified sheet using an authorized service.
+    :param service: Authorized Google Sheets service
+    :param spreadsheet_id: str The spreadsheet to apply the updates to.
+    :param requests: A list of updates to apply to the spreadsheet. Requests are applied in the order specified. If
+    any request fails or is not valid, none of the updates will be applied.
+    :return: None
+    :raise HttpError: If an any update fails.
+    """
+    request_body = {'requests': requests}
+
+    try:
+        service.spreadsheets().batchUpdate(spreadsheetId=spreadsheet_id, body=request_body).execute()
+    except HttpError, e:
+        request_names = []
+        for request in requests:
+            request_names.append(request.keys())
+        print_error('Error: Batch update failed. Sheet: ' + str(spreadsheet_id) + 'Requests: ' + str(request_names))
+        raise e
+
+
+def remove_formulas(service, spreadsheet_id, rng):
+    values = get_range(rng, spreadsheet_id, service, 'COLUMNS', False)
+    try:
+        service.spreadsheets().values().update(spreadsheetId=spreadsheet_id, valueInputOption='RAW',
+                                               range=values['range'], body=values).execute()
+    except HttpError, e:
+        print_error('Error: Failed to remove formulas from range: ' + str(rng) + 'on sheet: ' + str(spreadsheet_id))
+        raise e
+
+
+def clear_ranges(service, spreadsheet_id, ranges):
+    """
+
+    :param service:
+    :param spreadsheet_id:
+    :param ranges:
+    :return:
+    """
+    request_body = {'ranges': ranges}
+    try:
+        service.spreadsheets().values().batchClear(spreadsheetId=spreadsheet_id, body=request_body).execute()
+    except HttpError, e:
+        print_error('Error: Failed to clear ranges: ' + str(ranges) + 'on sheet: ' + str(spreadsheet_id))
+        raise e
+
+
+
+
+# Mail API Methods
+def _create_message(sender, to, subject, text):
+    """
+    Creates a message for use in the gmail api. Must create a draft before sending.
+    :param sender: Message 'From' email
+    :param to: Message 'To' email
+    :param subject: Subject line of the message
+    :param text: body of the message.
+    :return: a new message
+    """
+    message = MIMEText(text)
+    message['to'] = to
+    message['from'] = sender
+    message['subject'] = subject
+    return {'raw': base64.urlsafe_b64encode(message.as_string())}
+
+
+def _create_draft(service, user_id, message_body):
+    """
+    Creates a draft from the provided message
+    :param service: Mail API used to access Gmail
+    :param user_id: user for who draft will be created.
+    :param message_body:
+    :return: new gmail draft or None if draft creation fails
+    """
+    try:
+        message = {'message': message_body}
+        draft = service.users().drafts().create(userId=user_id, body=message).execute()
+        return draft
+    except HttpError as error:
+        print_error('Error: Failed to create. Please see stats_email.txt for draft and send manually.')
+        raise error
+
+
+def _send_draft(service, user_id, draft):
+    """
+    Sends the given draft.
+    :param service: Mail API used to send the draft
+    :param user_id: User who owns te draft
+    :param draft:  Draft to be sent
+    :return: None
+    """
+    try:
+        service.users().drafts().send(userId=user_id, body={'id': draft['id']}).execute()
+    except HttpError, e:
+        print_error('Error: Failed to send draft')
+        raise e
+
+
+def send_message(service, sender, to, subject, text):
+    """
+    Sends an email using the Mail API with the given information.
+    :param service: Mail API used to create and send the message
+    :param sender: Message From email. User must be have accesss to this address.
+                    Special value 'me' uses the authenticated user.
+    :param to: Message To email
+    :param subject: Email subject line
+    :param text: Body of the email.
+    :return:
+    """
+    try:
+        message = _create_message(sender, to, subject, text)
+        draft = _create_draft(service, sender, message)
+        _send_draft(service, sender, draft)
+    except HttpError:
+        try:
+            with open('email.txt', 'w') as out:
+                out.write(subject)
+                out.write(text)
+        except IOError:
+            print_error('Error: Failed write to text file. See text below.')
+            print subject
+            print text
 
 
 def get_labels(service, user_id='me'):
@@ -294,6 +475,29 @@ def get_labels(service, user_id='me'):
         return labels
     except HttpError, e:
         print_error('Error: Failed to retrieve labels for user: ' + str(user_id))
+        raise e
+
+
+def get_message(service, user_id, msg_id, labels):
+    to_find = ['To', 'From', 'Subject', 'Date']
+    try:
+        response = service.users().messages().get(
+            userId=user_id, id=msg_id, format='metadata', metadataHeaders=['From', 'To', 'Date', 'Subject']).execute()
+        message = {'X-GM-THRID': response['threadId'], 'X-Gmail-Labels': response['labelIds']}
+        message['X-Gmail-Labels'] = map(lambda l: labels[l], message['X-Gmail-Labels'])
+
+        while len(to_find) > 0:
+            found = next(header for header in response['payload']['headers'] if header['name'] in to_find)
+            encoded = found['value'].encode('ascii', 'ignore')
+            message[found['name']] = encoded
+            to_find.remove(found['name'])
+
+        return message
+    except StopIteration:
+        # Skip this message. This only happens with drafts missing a field and does not affect stats.
+        pass
+    except HttpError, e:
+        print_error('Error: Failed to retrieve message: ' + msg_id)
         raise e
 
 
@@ -326,69 +530,4 @@ def get_messages(service, user_id='me', query=''):
 
     except HttpError, e:
         print_error('Error: Failed to retrieve messages for: ' + str(user_id) + 'using query: ' + str(query))
-        raise e
-
-
-def duplicate_sheet_request(sheet_id, new_title, insert_index):
-    return {'duplicateSheet': {
-        'sourceSheetId': sheet_id,
-        'insertSheetIndex': insert_index,
-        'newSheetName': new_title
-        }
-    }
-
-
-def delete_named_range_request(service, spreadsheet_id, rng):
-    try:
-        named_ranges = service.spreadsheets().get(spreadsheetId=spreadsheet_id, ranges=rng).execute().get(
-            'namedRanges', [])
-
-        request_body = []
-        for named_range in named_ranges:
-            range_id = named_range['namedRangeId']
-            request_body.append({"deleteNamedRange": {"namedRangeId": range_id}})
-
-        return request_body
-    except HttpError, e:
-        print_error('Error: Failed to retrieve named ranges from range: ' + str(rng) +
-                    'on sheet: ' + str(spreadsheet_id))
-        raise e
-
-
-def remove_formulas(service, spreadsheet_id, rng):
-    values = get_range(rng, spreadsheet_id, service, 'COLUMNS', False)
-    try:
-        service.spreadsheets().values().update(spreadsheetId=spreadsheet_id, valueInputOption='RAW',
-                                               range=values['range'], body=values).execute()
-    except HttpError, e:
-        print_error('Error: Failed to remove formulas from range: ' + str(rng) + 'on sheet: ' + str(spreadsheet_id))
-        raise e
-
-
-def clear_ranges(service, spreadsheet_id, ranges):
-    """
-
-    :param service:
-    :param spreadsheet_id:
-    :param ranges:
-    :return:
-    """
-    request_body = {'ranges': ranges}
-    try:
-        service.spreadsheets().values().batchClear(spreadsheetId=spreadsheet_id, body=request_body).execute()
-    except HttpError, e:
-        print_error('Error: Failed to clear ranges: ' + str(ranges) + 'on sheet: ' + str(spreadsheet_id))
-        raise e
-
-
-def spreadsheet_batch_update(service, spreadsheet_id, requests):
-    request_body = {'requests': requests}
-
-    try:
-        service.spreadsheets().batchUpdate(spreadsheetId=spreadsheet_id, body=request_body).execute()
-    except HttpError, e:
-        request_names = []
-        for request in requests:
-            request_names.append(request.keys())
-        print_error('Error: Batch update failed. Sheet: ' + str(spreadsheet_id) + 'Requests: ' + str(request_names))
         raise e

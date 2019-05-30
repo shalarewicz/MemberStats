@@ -1,39 +1,42 @@
 # Utility
-from os.path import splitext
+# Need to install the date util library
+# pip install python-dateutil TODO Include in README
 from dateutil import parser, tz
 from sys import stderr
 
 
-def is_mbox(filename):
-    """
-    :param filename: filename
-    :return: true if fname is an mbox file.
-    """
-    ext = splitext(filename)[1][1:]
-    return ext == "mbox"
-
-
-def update_date(old, new):
-    if new > old:
-        old = new
-    return old
-
-
 def get_cutoff_date():
+    """
+    Prompt user to enter the earliest date for which stats should count.
+    :return: A datetime object for the user entered date.
+    """
     try:
-        return parse_date(raw_input(
-            "\nOn which date were stats last run?\n"
-            "i.e. What is the earliest date for which stats should count (typically last Thursday)?\n"))
+        cutoff = parse_date(raw_input(
+                "\nOn which date were stats last run?\n"
+                "i.e. What is the earliest date for which stats should count (typically last Thursday)?\n"))
+        if cutoff is None:
+            print "Date not in an accepted format (MM/DD/YYYY)\nPlease try again."
+            return get_cutoff_date()
+        else:
+            return cutoff
     except ValueError:
         print "Date not in an accepted format (MM/DD/YYYY)\nPlease try again."
         return get_cutoff_date()
 
 
-def parse_date(date, fuzzy=True, day_first=False):
+def parse_date(date, fuzzy=True, day_first=False, tz_info=tz.tzoffset('EDT', -14400)):
+    """
+    Parses the provided date and set the time zone to EDT if no time zone is specified.
+    :param date: String date
+    :param fuzzy: True if fuzzy parsing should be allowed (e.g. Today is January 1st(default=True).
+    :param day_first: True if date should be parsed with the day first (e.g. DD/MM/YY) (default=False)
+    :param tz_info: Default time zone info. (default = EDT GMT - 4)
+    :return datetime object representing date.
+    """
     try:
         ans = parser.parse(date, fuzzy=fuzzy, dayfirst=day_first)
         if ans.tzinfo is None:
-            ans = ans.replace(tzinfo=tz.tzoffset('IST', 19800))
+            ans = ans.replace(tzinfo=tz_info)
 
         return ans
     except ValueError:
@@ -43,6 +46,11 @@ def parse_date(date, fuzzy=True, day_first=False):
 
 # Return the A1 notation for a given index. _get_a1_column_notation(0) -> A
 def get_a1_column_notation(i):
+    """
+    Converts an index i to the equivalent column in A1 notation. For example, A = 1 and AA = 27
+    :param i: column index (A = 1)
+    :return: A1 string notation
+    """
     alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
     j = i-1
     if j < 26:
@@ -52,4 +60,9 @@ def get_a1_column_notation(i):
 
 
 def print_error(text):
-    print >> stderr.write(text)
+    """
+    Prints to standard error
+    :param text: Error message
+    :return: None
+    """
+    print >> stderr.write('\n'+text+'\n')

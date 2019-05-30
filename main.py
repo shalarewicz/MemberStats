@@ -1,3 +1,4 @@
+
 import sys
 import csv
 import time
@@ -9,8 +10,6 @@ import stats
 import mail
 import util
 from googleapiclient.errors import HttpError
-
-###########################################################################################
 
 # Read in existing member stats and stat labels
 member_data = None
@@ -36,7 +35,7 @@ except HttpError, e:
     raise e
 
 try:
-    open_inquiries = mail.OpenInquiry.from_file("Test/open.txt")  # TODO Update location
+    open_inquiries = mail.OpenInquiry.from_file("config/open.txt")
 except IOError:
     # TODO If open.txt not found reconstruct here using openInbox.py
     print "ERROR: Could not read open.txt. Please ensure the file is formatted properly.\n", \
@@ -52,24 +51,30 @@ if not config.SKIP:
     print "\nReading Support Inbox..."
     i = 0
 
-    #  Open log files
-    mail_out = open("Test\\" + "mail.csv", "wb")
-    fmail_out = open("Test\\" + 'formatted_mail.csv', 'wb')
-    mail_writer = csv.writer(mail_out)
-    mail_writer.writerow(['Thread ID', 'Date', 'From', 'To', 'Subject', 'X-Gmail-Labels'])
-    fmail_writer = csv.writer(fmail_out)
-    fmail_writer.writerow(['Thread ID', 'Date', 'From', 'To', 'Subject', 'Labels'])
+    mail_out = None
+    fmail_out = None
+    mail_writer = None
+    fmail_writer = None
+    if config.DEBUG:
+        #  Open log files
+        mail_out = open('config/mail.csv', 'wb')
+        fmail_out = open('config/formatted_mail.csv', 'wb')
+        mail_writer = csv.writer(mail_out)
+        mail_writer.writerow(['Thread ID', 'Date', 'From', 'To', 'Subject', 'X-Gmail-Labels'])
+        fmail_writer = csv.writer(fmail_out)
+        fmail_writer.writerow(['Thread ID', 'Date', 'From', 'To', 'Subject', 'Labels'])
 
     gmail_messages = googleAPI.get_messages(googleAPI.SUPPORT_MAIL_API, 'me', 'label:stats')
     for message in gmail_messages:
         msg = mail.Message(message)
         msg_id = msg.get_thread_id()
 
-        mail_writer.writerow([msg_id, message['Date'], message['From'], message['To'],
-                              message['Subject'], message['X-Gmail-Labels']])
+        if config.DEBUG:
+            mail_writer.writerow([msg_id, message['Date'], message['From'], message['To'],
+                                  message['Subject'], message['X-Gmail-Labels']])
 
-        fmail_writer.writerow([msg_id, msg.get_date(), msg.get_from_address(), msg.get_to(),
-                              msg.get_subject(), msg.get_labels()])
+            fmail_writer.writerow([msg_id, msg.get_date(), msg.get_from_address(), msg.get_to(),
+                                   msg.get_subject(), msg.get_labels()])
 
         if msg.is_spam() or msg.is_idea():
             continue
@@ -89,21 +94,19 @@ if not config.SKIP:
             print i, msg
         i += 1
 
-    fmail_out.close()
-    mail_out.close()
+    if config.DEBUG:
+        fmail_out.close()
+        mail_out.close()
 
     for thread in threads:
         trd = threads[thread]
         if trd.get_oldest_date() < cutoff:
-            # TODO Move to Thread class. if the oldest date is ever before the cutoff then we don't need to count it
-            # If the thread has an oldest date before the cutoff change goodThread to false. This can
-            # also be configured to ask the user if the thread should be counted. However, there are
-            # a surprising amount of threads where this occurs 99% of which should not count so I
-            # decided to automatically not count the thread. Therefore, if an admin replies to a thread
-            # older than the cutoff with a completely new inquiry the thread won't be counted.
-            # I'm OK with this as it does not happen too often.
-            # TODO Figure out if the extract pulls all emails in the thread or just those within the
-            #  specified timeframe
+            # This check was performed as a result of the mbox data extract containing all messages in a thread.
+            # Therefore if an admin replied to an old thread before the cutoff this thread would not be counted.
+            # Currently the googleAPI uses get_messages which only obtains specific messages meeting the search criteria
+            # therefore this check should no longer be necessary but results in double counting when threads span 2 or
+            # more stat periods.
+            # TODO will need to update googleAPI to pull thread data and not just messages to avoid double counting
             trd.dont_count()
 
         if len(trd.get_members()) > 0:
@@ -114,7 +117,9 @@ if not config.SKIP:
 
     new_open_inquires = stats.count_stats(threads, member_data)
     inbox = googleAPI.get_messages(googleAPI.SUPPORT_MAIL_API, "me", "label:Inbox")
-    mail.OpenInquiry.update(open_inquiries, new_open_inquires, inbox)
+    num_open, num_closed = mail.OpenInquiry.update(open_inquiries, new_open_inquires, inbox)
+    stats.count_open(num_open)
+    stats.count_existing_closed(num_closed)
 
 # Combine and format in prep for writing
 stats.format_stats()
@@ -153,7 +158,7 @@ try:
     googleAPI.spreadsheet_batch_update(googleAPI.SHEETS_API, config.ENROLLMENT_DASHBOARD_ID, [duplicate_request])
 except HttpError:
     util.print_error("Error: Failed to duplicate current tab on Enrollment Dashboard. See steps below.")
-    print '1. Duplicate Tab and rename as ' + new_title
+    print '1. Duplicate Tab and rename as ' + new_title + ". If a conflict tab exists, rename the conflict tab."
     print '2. Copy all cells on duplicated tab and paste as values to remove forumulas'
     print '3. Go to "Data -> Named Ranges" and remove all named ranges associated with the duplicated sheet'
     print '4. Delete all call information on the "Current" Tab of the Enrollment Dashboard'
@@ -190,9 +195,5 @@ email_body = stats.draft_message(cutoff)
 try:
     googleAPI.send_message(googleAPI.MAIL_API, "me", config.STATS_EMAIL, subject, email_body)
 except HttpError:
-    util.print_error("Error: Failed to send email to Andy. Please use text in email.txt or text printed to the terminal")
+    util.print_error("Error: Failed to send email to Andy. Please use text in email.txt or text printed to terminal")
     raw_input("Press enter to continue.")
-
-# Open the mbox file and parse each message
-    # If this is the first message in the thread create a new thread
-    # Else add the message to the thread AND the message is good THEN

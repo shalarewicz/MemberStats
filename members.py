@@ -1,28 +1,31 @@
 from googleAPI import get_range
-from sys import exit
-# import stats
 import util
-MEMBERS = {}
 
 
-try:
-    from dateutil import parser
-except ImportError, e:
-    print "ERROR: dateutil not found. Install the dateutil package by typing " \
-          "'pip install python-dateutil' into the command line"
+MEMBERS = {}  # Member dictionary {short name: Member}
 
 
 class Member(object):
     """
     A Member allows for the tracking tracking member specific statistics, check in date and last contact date.
+
+    Attributes:
+        name: str
+            member's short name
+        last_contact: datetime:
+            date the member last made contact with Support
+        check_in: datetime
+            date Support last conducted a check-in call
+        stats: lst(int)
+            Existing statistics from read from the Member Stats tab.
     """
 
     def __init__(self, name, last_contact, check_in, stats):
         """
         Creates a new Member.
-        :param name: member's short name  TODO Type Specifications?
+        :param name: member's short name
         :param last_contact: date the member last made contact with Support
-        :param check_in: date Support last conducted a checkin call
+        :param check_in: date Support last conducted a check-in call
         :param stats: Existing statistics from the Member Stats tab.
         """
         self.name = name
@@ -50,29 +53,43 @@ class Member(object):
 
     @staticmethod
     def update_member_dates(member, last_contact, check_in):
-        MEMBERS[member].update_last_contact(last_contact)
-        MEMBERS[member].update_check_in(check_in)
-
-    def set_stats(self, new_stats):
-        """ TODO is this used?
-        Overwrites existing member statistics with new statistics
-        :param new_stats:
         """
-        self.stats = new_stats
+        Compares the provided dates against the members record in MEMBERS and updates if necessary
+        :param member:
+        :param last_contact:
+        :param check_in:
+        :return: None
+        """
+        try:
+            MEMBERS[member].update_last_contact(last_contact)
+            MEMBERS[member].update_check_in(check_in)
+        except KeyError:
+            util.print_error("Error: Failed to updates dates for member (Member nof found): " + member.name)
 
     def get_stats(self):
         return self.stats
 
     def increment_stat(self, index):
+        """
+        Increments members.stats[index] by one
+        :param index: index of the stat to be updated.
+        :return: None
+        """
         try:
             self.stats[index] += 1
         except IndexError:
-            print "IndexError during counting for " + self.name + ": " + str(index)
-            print self.get_stats()
+            util.print_error('Error: IndexError during counting for ' + self.name + ': ' + str(index))
+            util.print_error(self.get_stats())
             # todo log
 
     @staticmethod
     def create_stat_row(mem):
+        """
+        Creates a row which can be written to the Member Stats tab on the Retention sheet.
+        Response format = [name, last_contact, check_in, stats]
+        :param mem: str Member for which stat row would be created.
+        :return: lst: a list with the response format listed above
+        """
         if mem.last_contact is None:
             last_contact = ""
         else:
@@ -126,10 +143,30 @@ class Member(object):
 
 
 class Admin(object):
+    """
+    Represents an administrator which last contact and check in information should be tracked.
+    Attributes:
+        name: str
+        org: str
+        emails: lst(str)
+        :param last_contact: datetime
+            date the member last made contact with Support
+        :param check_in: datetime
+            date Support last conducted a check-in call
+        id: int
+            Unique id
+    """
     _id = 0
-    """docstring for Admin TODO"""
-    def __init__(self, name, org, last_contact, check_in, emails):  # TODO flip check in and last contact dates in sheet
 
+    def __init__(self, name, org, last_contact, check_in, emails):
+        """
+        Constructs a new admin.
+        :param name: str
+        :param org: str
+        :param last_contact: datetime
+        :param check_in: datetime
+        :param emails: lst(str)
+        """
         self.name = name
         self.org = org
         self.emails = emails
@@ -193,11 +230,25 @@ class Admin(object):
 
     @staticmethod
     def update_admin_dates(admin, last_contact, check_in):
+        """
+        Compares the provided dates against the admin and updates if necessary
+        :param admin: Admin
+        :param last_contact: datetime
+        :param check_in: datetime
+        :return: None
+        """
         admin.update_last_contact(last_contact)
         admin.update_check_in(check_in)
 
     @staticmethod
     def create_stat_row(admin):
+        """
+        Creates a row which can be written to the Support Outreach Admins tab on the Retention sheet.
+        Response format = [last_contact, check_in]
+        Dates will have format mm/dd/yyyy
+        :param admin: str Admin for which stat row would be created.
+        :return: lst: a list with the response format listed above
+        """
         if admin.last_contact is None:
             last_contact = ""
         else:
