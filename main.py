@@ -10,10 +10,7 @@ import util
 from googleapiclient.errors import HttpError
 
 # Read in existing member stats and stat labels
-member_data = None
-stat_labels = None
-admins = None
-admin_emails = None
+member_data, stat_labels, admins, admin_emails = None, None, None, None
 try:
     member_data, stat_labels = \
         members.Member.read_members(config.MEMBER_STATS_SHEET, config.SPREADSHEET_ID, googleAPI.SHEETS_API)
@@ -41,10 +38,7 @@ if not config.SKIP:
     print "\nReading Support Inbox..."
     i = 0
 
-    mail_out = None
-    fmail_out = None
-    mail_writer = None
-    fmail_writer = None
+    mail_out, fmail_out, mail_writer, fmail_writer = None, None, None, None
     if config.DEBUG:
         #  Open log files
         mail_out = open('config/mail.csv', 'wb')
@@ -59,7 +53,8 @@ if not config.SKIP:
     try:
         open_inquiries = mail.OpenInquiry.from_file("config/open.txt")
     except IOError:
-        util.print_error('ERROR: config/open.txt not found. Please check to see if the config folder contains open.txt')
+        util.print_error('ERROR: config/open.txt not found or not formatted properly. '
+                         'Please check to see if the config folder contains open.txt')
         print 'This file will need to be reconstructed. You will be asked to go through the current inbox to rebuild ' \
               'the file.'
         print 'Alternatively, you may locate/restore the prior version of open.txt to the config folder and ' \
@@ -106,12 +101,6 @@ if not config.SKIP:
     for thread in threads:
         trd = threads[thread]
         if trd.get_oldest_date() < cutoff:
-            # This check was performed as a result of the mbox data extract containing all messages in a thread.
-            # Therefore if an admin replied to an old thread before the cutoff this thread would not be counted.
-            # Currently the googleAPI uses get_messages which only obtains specific messages meeting the search criteria
-            # therefore this check should no longer be necessary but results in double counting when threads span 2 or
-            # more stat periods.
-            # TODO will need to update googleAPI to pull thread data and not just messages to avoid double counting
             trd.dont_count()
 
         if len(trd.get_members()) > 0:
@@ -125,33 +114,28 @@ if not config.SKIP:
     stats.count_open(num_open)
     stats.count_existing_closed(num_closed)
 
-# Combine and format in prep for writing
+# Combine and format stats in prep for writing
 stats.format_stats()
 
 # Update weekly support stats
 stats.update_weekly_support_stats(googleAPI.SHEETS_API, config.WEEKLY_STATS_SHEET_ID)
 
-# Update member stats and sort the sheet
+# Update member and admin stats
 try:
-    update_range = config.MEMBER_STATS_SHEET + '!A2:' + util.get_a1_column_notation(len(stat_labels)+3)
-    googleAPI.update_range(googleAPI.SHEETS_API, config.SPREADSHEET_ID, update_range,
-                           map(members.Member.create_stat_row, member_data.values()))
+    new_mem_data = map(members.Member.create_stat_row, member_data.values())
+
+    mem_request = googleAPI.update_request(config.MEMBER_STATS_SHEET_ID, new_mem_data,
+                                           1, len(member_data) + 1, 0, len(stat_labels) + 3)
+    sort_request = googleAPI.sort_request(config.MEMBER_STATS_SHEET_ID, 0, 1, 1000, 0, 1000)
+
+    new_admin_data = map(lambda adm: members.Admin.create_stat_row(admins[adm]), sorted(admins.keys()))
+    admin_request = googleAPI.update_request(config.ADMIN_SHEET_ID, new_admin_data, 1, len(new_admin_data) + 1, 4, 6)
+
+    googleAPI.spreadsheet_batch_update(googleAPI.SHEETS_API, config.SPREADSHEET_ID,
+                                       [mem_request, sort_request, admin_request])
+
 except HttpError, e:
     util.print_error("Error: Failed to update Member Stats. Report and resolve error then re-run stats")
-    raise e
-
-try:
-    sort_request = googleAPI.sort_request(config.MEMBER_STATS_SHEET_ID, 0, 1, 1000, 0, 1000)
-    googleAPI.spreadsheet_batch_update(googleAPI.SHEETS_API, config.SPREADSHEET_ID, [sort_request])
-except HttpError:
-    util.print_error("Error: Failed to sort 'Member Stats' sheet.")
-
-# Update admin dates
-try:
-    googleAPI.update_range(googleAPI.SHEETS_API, config.SPREADSHEET_ID, 'Admin_Contact_Info',
-                           map(lambda adm: members.Admin.create_stat_row(admins[adm]), sorted(admins.keys())), 'RAW')
-except HttpError, e:
-    util.print_error("Error: Failed to update admin data. Report and resolve error then re-run stats")
     raise e
 
 # Duplicate current tab on enrolment dash)

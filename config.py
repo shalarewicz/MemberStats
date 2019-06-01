@@ -5,6 +5,7 @@ from oauth2client import tools
 # Production Sheets
 SPREADSHEET_ID = '1mkxL43rqDyBZ6T8TIzg1_OQKhVNjefvYTDg9noC18j4'
 ADMIN_SHEET = 'Support Outreach Administrators'
+ADMIN_SHEET_ID = 452292035
 MEMBER_STATS_SHEET = 'Member Stats'
 MEMBER_STATS_SHEET_ID = 1220379579
 WEEKLY_STATS_SHEET_ID = '12wQxfv5EOEEsi3zCFwwwAq05SAgvzXoHRZbD33-TQ3o'
@@ -19,11 +20,12 @@ def set_test(tst):
     :return:
     """
     if tst:
-        global SPREADSHEET_ID, ADMIN_SHEET, MEMBER_STATS_SHEET, MEMBER_STATS_SHEET_ID, WEEKLY_STATS_SHEET_ID, \
-            STATS_EMAIL, ENROLLMENT_DASHBOARD_ID, CURRENT_SHEET_ID
+        global SPREADSHEET_ID, ADMIN_SHEET, ADMIN_SHEET_ID, MEMBER_STATS_SHEET, MEMBER_STATS_SHEET_ID, \
+            WEEKLY_STATS_SHEET_ID, STATS_EMAIL, ENROLLMENT_DASHBOARD_ID, CURRENT_SHEET_ID
         # Testing Sheets / Ranges
         SPREADSHEET_ID = '1Vuozw7SwH4T-w6kAivL0nxLpdc3KpCFyQG8JeLlhPp8'
         ADMIN_SHEET = 'Support Outreach Administrators'
+        ADMIN_SHEET_ID = 452292035
         MEMBER_STATS_SHEET = 'Member Stats'
         MEMBER_STATS_SHEET_ID = 1220379579
         WEEKLY_STATS_SHEET_ID = '1zT_lGeug1Nfk7x3RLmiT59Z3mVVBdv6ryqz-DRkh0q8'
@@ -60,13 +62,14 @@ def parse():
     Parses and assigns global variables based on command line arguments.
     :return:
     """
-    global COUNT_ALL, COUNT_EVERY, COUNT_NONE, SKIP, TEST
+    global COUNT_ALL, COUNT_EVERY, COUNT_NONE, SKIP, TEST, DEBUG
     args = parser().parse_args()
     COUNT_ALL = args.all
     COUNT_EVERY = args.i
     COUNT_NONE = args.none
     SKIP = args.skip
     TEST = args.test
+    DEBUG = args.debug
 
 
 def parser():

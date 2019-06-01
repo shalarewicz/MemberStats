@@ -140,18 +140,16 @@ def _new_row(values):
     return {'values': row_values}
 
 
-def _new_column(values):
+def _new_value_range(rng):
     """
-    Creates a new column object from a list of values.
-    :param values: (value, type)
-        A list of tuples consisting of (value, type).
-        type: 'DATE', 'NUMBER', 'STRING'
-    :return: lst(RowData) representing the column
+    Creates a 2D array of values from the values in range.
+    :param rng: lst(lst(values)) representing to be entered
+    :return: lst(RowData) representing the new range.
     """
-    column_values = []
-    for value in values:
-        column_values.append(_new_row([value]))
-    return column_values
+    range_values = []
+    for row in rng:
+        range_values.append(_new_row(row))
+    return range_values
 
 
 def insert_column_request(sheet_id, values, start_row, end_row, start_col, end_col, inherit=False):
@@ -169,7 +167,11 @@ def insert_column_request(sheet_id, values, start_row, end_row, start_col, end_c
      after the newly inserted column.
     :return:
     """
-    column = _new_column(values)
+    two_d_values = []
+    for value in values:
+        two_d_values.append([value])
+
+    # column = _new_value_range(two_d_values)
     insert_request = {
             "insertDimension": {
                 "inheritFromBefore": inherit,
@@ -181,7 +183,7 @@ def insert_column_request(sheet_id, values, start_row, end_row, start_col, end_c
                 }
             }
         }
-    update = update_request(sheet_id, column, start_row, end_row, start_col, end_col)
+    update = update_request(sheet_id, two_d_values, start_row, end_row, start_col, end_col)
 
     return [insert_request, update]
 
@@ -220,17 +222,18 @@ def update_range(service, spreadsheet_id, rng, values,
         raise e
 
 
-def update_request(sheet_id, row_data, start_row, end_row, start_col, end_col, ):
+def update_request(sheet_id, rng, start_row, end_row, start_col, end_col, ):
     """
     Creates a spreadsheets.batchUpdate request to update the specified range
     :param sheet_id: str Sheet on which data will be sorted.
-    :param row_data: RowData object containing data about each cell in a row.
+    :param rng: RowData object containing data about each cell in a row.
     :param start_row: int start row inclusive of range that should be sorted.
     :param end_row: int end row exclusive of range that should be sorted.
     :param start_col: int start column inclusive of range that should be sorted.
     :param end_col: int end column exclusive of range that should be sorted.
     :return: updateCells request
     """
+    row_data = _new_value_range(rng)
     return {
       "updateCells": {
         "rows": row_data,

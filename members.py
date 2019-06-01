@@ -91,17 +91,20 @@ class Member(object):
         :return: lst: a list with the response format listed above
         """
         if mem.last_contact is None:
-            last_contact = ""
+            last_contact = ("", 'STRING')
         else:
-            last_contact = mem.last_contact.strftime('%m/%d/%Y')
+            last_contact = (util.serial_date(mem.last_contact), 'DATE')
 
         if mem.check_in is None:
-            check_in = ""
+            check_in = ("", 'STRING')
         else:
-            check_in = mem.check_in.strftime('%m/%d/%Y')
+            check_in = (util.serial_date(mem.check_in), 'DATE')
 
-        result = [mem.name, last_contact, check_in]
-        result.extend(mem.stats)
+        result = [(mem.name, 'STRING'), last_contact, check_in]
+
+        for stat in mem.stats:
+            result.append((stat, 'NUMBER'))
+
         return result
 
     @staticmethod
@@ -126,7 +129,7 @@ class Member(object):
                 mem_stats = member[3:]
                 parsed_stats = []
                 for s in mem_stats:
-                    parsed_stats.append(int(s[0]))
+                    parsed_stats.append(int(s))
                 MEMBERS[name] = Member(name, contact, check_in, parsed_stats)
             except IndexError:
                 print "The following member does not have a complete set of data on the " + rng + " tab." \
@@ -194,8 +197,8 @@ class Admin(object):
                 emails = [email.lower() for email in admin[6:9]]
                 name = admin[1]
                 org = admin[0]
-                last_contact = util.parse_date(admin[4])
-                check_in = util.parse_date(admin[5])
+                check_in = util.parse_date(admin[4])
+                last_contact = util.parse_date(admin[5])
 
                 new = Admin(name, org, last_contact, check_in, emails)
                 admins[new.id] = new
@@ -237,8 +240,8 @@ class Admin(object):
         :param check_in: datetime
         :return: None
         """
-        admin.update_last_contact(last_contact)
-        admin.update_check_in(check_in)
+        admin.update_last_contact(util.serial_date(last_contact))
+        admin.update_check_in(util.serial_date(check_in))
 
     @staticmethod
     def create_stat_row(admin):
@@ -250,14 +253,14 @@ class Admin(object):
         :return: lst: a list with the response format listed above
         """
         if admin.last_contact is None:
-            last_contact = ""
+            last_contact = ("", 'STRING')
         else:
-            last_contact = admin.last_contact.strftime('%m/%d/%Y')
+            last_contact = (util.serial_date(admin.last_contact), 'DATE')
 
         if admin.check_in is None:
-            check_in = ""
+            check_in = ("", 'STRING')
         else:
-            check_in = admin.check_in.strftime('%m/%d/%Y')
+            check_in = (util.serial_date(admin.check_in), 'DATE')
 
-        result = [last_contact, check_in]
+        result = [check_in, last_contact]
         return result

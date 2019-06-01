@@ -1,6 +1,4 @@
 # Utility
-# Need to install the date util library
-# pip install python-dateutil TODO Include in README
 from dateutil import parser, tz
 from sys import stderr
 

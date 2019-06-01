@@ -19,8 +19,6 @@ class Message(object):
             Subject Date
         labels: lst(str)
             All GMail labels associated with the message.
-        counts: boolean
-            True if the message is not internal or is from support
     """
     def __init__(self, message):
         """
@@ -51,8 +49,6 @@ class Message(object):
             # Extract email address from string containing "<email>"
             self.from_address = from_address[from_address.find("<") + 1: from_address.find(">")].lower()
 
-        self.counts = not (self.is_internal() or self.is_from_support())
-
         self.labels = message['X-Gmail-Labels']
 
         date = message['Date']
@@ -78,7 +74,8 @@ class Message(object):
         :return: True if the Message's from address matches contains 'irbnet.org' and is not listed
         in config.INTERNAL_EMAILS.
         """
-        return "irbnet.org" in self.from_address and all(x not in self.from_address for x in config.INTERNAL_EMAILS)
+        return all('irbnet.org' in x for x in [self.from_address, self.to]) and \
+            'noreply@irbnet.org' not in self.from_address
 
     def is_to_from_support(self):
         """
@@ -183,7 +180,7 @@ class Thread(object):
         self.good_thread = True
         self.last_contact_date = None
         self.oldest_date = message.get_date()
-        if message.counts:  # only update for messages not from support or an internal address
+        if not (message.is_from_support() or message.is_internal()):
             self.last_contact_date = message.get_date()
         self.check_in_date = None
         self.non_ping = len(self.stat_labels) > 0
@@ -295,9 +292,6 @@ class Thread(object):
         :return: None
         """
         self.message_count += 1
-        if not self.good_thread and message.counts:
-            # TODO This prevents single emails from support to a member/ideas etc. from being counted?
-            self.good_thread = True
 
         new_stats, new_members = message.extract_labels()
         for label in new_stats:
@@ -307,9 +301,11 @@ class Thread(object):
             self.member_labels.add(label)
 
         new_date = message.date
-        if message.counts:
-            if self.oldest_date is None or new_date < self.oldest_date:
-                self.oldest_date = new_date
+
+        if self.oldest_date is None or new_date < self.oldest_date:
+            self.oldest_date = new_date
+
+        if not (message.is_from_support() or message.is_internal()):
             if self.last_contact_date is None or new_date > self.last_contact_date:
                 self.last_contact_date = new_date
 
@@ -405,22 +401,22 @@ class OpenInquiry:
         """
         Builds a dictionary of open inquires from a file containing a list of open inquires.
         :param filename: File containing a list of open inquiries. Must be formatted properly
-                         THREAD_ID
-                         SUBJECT
+                         THREAD_ID - hex string without '0x'
+                         SUBJECT - str
                          No error is raised is file not formatted properly
         :return: dictionary of all open inquires {thread_id : OpenInquiry}
-        :raise: IOError if the file cannot be read
+        :raise: IOError if the file cannot be read or is not formatted properly
         """
         file_in = open(filename, 'r')
         threads = {}
-        while file_in:
-            current = file_in.readline()
-            if current is None:  # TODO Better way?
-                break
-            thread_id = file_in.readline().strip()
-            subject = file_in.readline().strip()
-            threads[thread_id] = OpenInquiry(thread_id, subject)
-            break
+        lines = file_in.readlines()
+        for i in range(0, len(lines) - 1, 2):
+            try:
+                thread_id = lines[i].strip()
+                subject = lines[i+1].strip()
+                threads[thread_id] = OpenInquiry(thread_id, subject)
+            except IndexError:
+                raise IOError("Error: Open.txt not properly formatted.")
         file_in.close()
         return threads
 
@@ -514,9 +510,9 @@ class OpenInquiry:
         for thread in to_delete:
             del open_inquiries[thread]
 
-        OpenInquiry._write_to_file(open_inquiries.values(), 'config/open.txt')
-
         open_inquiries.update(new_open_inquiries)
+
+        OpenInquiry._write_to_file(open_inquiries.values(), 'config/open.txt')
 
         return num_open, num_closed
 

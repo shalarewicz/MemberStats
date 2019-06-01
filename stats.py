@@ -203,14 +203,8 @@ def count_existing_closed(i=1):
 
 def calc_total_closed():
     count = TOTAL_STATS["New Closed Inquiries"].get_count() + TOTAL_STATS["Existing Open Inquiries Closed"].get_count()
-    TOTAL_STATS["Total Closed Inquiries"].set_count(count)
-    return count
-
-
-def calc_total_open():
-    count = TOTAL_STATS["New Open Inquiries"].get_count() - TOTAL_STATS["Existing Open Inquiries Closed"].get_count()
-    TOTAL_STATS["Total Open Inquiries"].set_count(count)
-    return count
+    TOTAL_STATS["Total Closed Inquiries"].increment(count)
+    return TOTAL_STATS["Total Closed Inquiries"]
 
 
 def format_stats():
@@ -285,7 +279,7 @@ def format_stats():
     # Calculate total open and closed
     TOTAL_STATS["Overall Total New Inquiries"].set_count(total_pings + total_non_pings)
     calc_total_closed()
-    calc_total_open()
+    TOTAL_STATS["Total Open Inquiries"].increment(TOTAL_STATS['New Open Inquiries'].get_count())
     # Get call info
     get_support_calls()
 
@@ -497,7 +491,7 @@ def draft_message(cutoff):
 
     txt = "Andy, \n\n " \
         "Below are the requested statistics from " + str(start_weekday) + ", " + start_date + " to " + \
-        str(today_weekday) + ", " + str(today) + ":\n\n" \
+          str(today_weekday) + ", " + str(today) + ":\n\n" \
         "Pings (includes New Orgs; no Sales Pings): " + pings_less_sales + "\n" \
         "Non-Pings: " + str(total_non_pings) + "\n" \
         "Sales Inquiries: " + str(PING_STATS["Sales Pings"].get_count()) + "\n" \
@@ -505,7 +499,7 @@ def draft_message(cutoff):
         "Total New Inquiries (Non-Pings) Currently Open: " + str(TOTAL_STATS["New Open Inquiries"].get_count()) + "\n" \
         "Total New Inquiries (Non-Pings) Closed: " + str(TOTAL_STATS["New Closed Inquiries"].get_count()) + "\n" \
         "Total Existing Open Inquiries Closed: " + str(TOTAL_STATS["Existing Open Inquiries Closed"].get_count()) + \
-        "\nTotal Open Inquiries: " + str(TOTAL_STATS["Total Open Inquiries"].get_count()) + "\n" \
+          "\nTotal Open Inquiries: " + str(TOTAL_STATS["Total Open Inquiries"].get_count()) + "\n" \
         "Total Closed Inquiries: " + str(TOTAL_STATS["Total Closed Inquiries"].get_count()) + "\n\n" \
         "Total # of Sessions: " + str(CALL_STATS["Sessions"].get_count()) + "\n" \
         "Total # of Sales Calls: " + str(CALL_STATS["Sales Calls"].get_count()) + "\n" \
