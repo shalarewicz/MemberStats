@@ -23,7 +23,7 @@ except ImportError, ie:
 # at ~/.credentials/token.pickle and support_token.pickle
 SCOPES = ['https://www.googleapis.com/auth/spreadsheets', 'https://www.googleapis.com/auth/gmail.compose']
 SUPPORT_SCOPE = ['https://www.googleapis.com/auth/gmail.readonly']
-CLIENT_SECRET_FILE = 'config/client_secret.json'
+CLIENT_SECRET_FILE = 'tools/client_secret.json'
 APPLICATION_NAME = 'Google API for Stats'
 
 

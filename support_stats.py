@@ -1,15 +1,10 @@
 import csv
 import time
-
-import config
-import googleAPI
-import members
-import stats
-import mail
-import util
+from tools import config
+from tools.lib import mail, members, stats, util, googleAPI
 from googleapiclient.errors import HttpError
 
-# Read in existing member stats and stat labels
+# Read in existing member stats and stat labels from the Retention sheet
 member_data, stat_labels, admins, admin_emails = None, None, None, None
 try:
     member_data, stat_labels = \
@@ -23,6 +18,7 @@ print "\nThe following Statistics will be determined..."
 for stat in sorted(stats.STAT_LABELS):
     print stat
 
+# Read in Admin Data from the Retention sheet
 try:
     admins, admin_emails = members.Admin.read_admins(config.ADMIN_SHEET, config.SPREADSHEET_ID, googleAPI.SHEETS_API)
 except HttpError, e:
@@ -31,18 +27,18 @@ except HttpError, e:
 
 cutoff = util.get_cutoff_date()
 
-messages = {}
 threads = {}
 
 if not config.SKIP:
+    # Obtain mail from Support Inbox and begin thread counting
     print "\nReading Support Inbox..."
     i = 0
 
     mail_out, fmail_out, mail_writer, fmail_writer = None, None, None, None
     if config.DEBUG:
         #  Open log files
-        mail_out = open('config/mail.csv', 'wb')
-        fmail_out = open('config/formatted_mail.csv', 'wb')
+        mail_out = open('tools/logs/mail.csv', 'wb')
+        fmail_out = open('tools/logs/formatted_mail.csv', 'wb')
         mail_writer = csv.writer(mail_out)
         mail_writer.writerow(['Thread ID', 'Date', 'From', 'To', 'Subject', 'X-Gmail-Labels'])
         fmail_writer = csv.writer(fmail_out)
@@ -51,13 +47,13 @@ if not config.SKIP:
     inbox = googleAPI.get_messages(googleAPI.SUPPORT_MAIL_API, "me", "label:Inbox")
 
     try:
-        open_inquiries = mail.OpenInquiry.from_file("config/open.txt")
+        open_inquiries = mail.OpenInquiry.from_file("tools/open.txt")
     except IOError:
-        util.print_error('ERROR: config/open.txt not found or not formatted properly. '
-                         'Please check to see if the config folder contains open.txt')
+        util.print_error('ERROR: open.txt not found or not formatted properly. '
+                         'Please check to see if the tools folder contains open.txt')
         print 'This file will need to be reconstructed. You will be asked to go through the current inbox to rebuild ' \
               'the file.'
-        print 'Alternatively, you may locate/restore the prior version of open.txt to the config folder and ' \
+        print 'Alternatively, you may locate/restore the prior version of open.txt to the tools folder and ' \
               're-run the script. This is recommended.'
         raw_input("Press enter to rebuild the file OR exit the script to locate and restore the file.")
         open_inquiries = mail.OpenInquiry.from_current_inbox(inbox)
@@ -77,6 +73,7 @@ if not config.SKIP:
                                    msg.get_subject(), msg.get_labels()])
 
         if msg.is_spam() or msg.is_idea():
+            # Spam and ideas should never count
             continue
 
         if msg_id not in threads:
@@ -84,11 +81,11 @@ if not config.SKIP:
         else:
             threads[msg_id].add_message(msg)
 
-        if "irbnet.org" not in msg.get_from_address() and msg.get_from_address() in admin_emails:
-            a = admins[admin_emails[msg.get_from_address()]]
-            a.update_last_contact(msg.get_date())
+        if msg.get_from_address() in admin_emails:
+            admin = admins[admin_emails[msg.get_from_address()]]
+            admin.update_last_contact(msg.get_date())
             if "check-in call" in msg.get_labels():
-                a.update_check_in(msg.get_date())
+                admin.update_check_in(msg.get_date())
 
         if not config.COUNT_EVERY == 0 and i % config.COUNT_EVERY == 0:
             print i, msg
@@ -103,21 +100,23 @@ if not config.SKIP:
         if trd.get_oldest_date() < cutoff:
             trd.dont_count()
 
-        if len(trd.get_members()) > 0:
-            for mem in trd.get_members():
-                member_data[mem].update_last_contact(trd.get_last_contact_date())
-                if trd.is_check_in():
-                    member_data[mem].update_check_in(trd.get_check_in_date())
+        for mem in trd.get_members():  # This isn't 100% accurate but good threads with multiple members are rare.
+            member_data[mem].update_last_contact(trd.get_last_contact_date())
+            if trd.is_check_in():
+                member_data[mem].update_check_in(trd.get_check_in_date())
 
     new_open_inquires = stats.count_stats(threads, member_data)
+
+    # num_open = Number of threads currently open excluding new open inquires
+    # num_closed = Number of threads closed since the last time stats were run.
     num_open, num_closed = mail.OpenInquiry.update(open_inquiries, new_open_inquires, inbox)
     stats.count_open(num_open)
     stats.count_existing_closed(num_closed)
 
-# Combine and format stats in prep for writing
+# Combine and format stats in prep for writing. Combines changes requests, CITI, Issues, Sales Ping. Calculates totals
 stats.format_stats()
 
-# Update weekly support stats
+# Update weekly support stats gsheet
 stats.update_weekly_support_stats(googleAPI.SHEETS_API, config.WEEKLY_STATS_SHEET_ID)
 
 # Update member and admin stats
@@ -131,11 +130,12 @@ try:
     new_admin_data = map(lambda adm: members.Admin.create_stat_row(admins[adm]), sorted(admins.keys()))
     admin_request = googleAPI.update_request(config.ADMIN_SHEET_ID, new_admin_data, 1, len(new_admin_data) + 1, 4, 6)
 
+    # If on request fails neither member or admin data wil lbe updated.
     googleAPI.spreadsheet_batch_update(googleAPI.SHEETS_API, config.SPREADSHEET_ID,
                                        [mem_request, sort_request, admin_request])
 
 except HttpError, e:
-    util.print_error("Error: Failed to update Member Stats. Report and resolve error then re-run stats")
+    util.print_error("Error: Failed to update Member or Admin. Report and resolve error then re-run stats")
     raise e
 
 # Duplicate current tab on enrolment dash)
@@ -153,6 +153,7 @@ except HttpError:
     raw_input("Press enter to continue.")
 
 else:
+    # Try each request individually in case one fails.
     try:
         delete_named_ranges_request = googleAPI.delete_named_range_request(
             googleAPI.SHEETS_API, config.ENROLLMENT_DASHBOARD_ID, new_title)

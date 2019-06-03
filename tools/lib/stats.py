@@ -4,8 +4,8 @@ import datetime
 
 from googleapiclient.errors import HttpError
 import googleAPI
-from mail import OpenInquiry
-import config
+import mail
+from tools import config
 import util
 
 
@@ -340,7 +340,7 @@ def count_stats(threads, members):
     writer = None
     if config.DEBUG:
         try:
-            out = open('config/thread_lookup.csv', 'wb')
+            out = open('tools/logs/thread_lookup.csv', 'wb')
             writer = csv.writer(out)
             writer.writerow(["Date", "Subject", "Stats", "Members", "Counted Stat", "Closed?"])
         except IOError:
@@ -394,7 +394,7 @@ def count_stats(threads, members):
                             count_new_closed()
                         else:
                             count_new_open()
-                            open_inquiries[trd.get_id()] = OpenInquiry(trd.get_id(), trd.get_subject())
+                            open_inquiries[trd.get_id()] = mail.OpenInquiry(trd.get_id(), trd.get_subject())
                         if out is not None:
                             _write_stat_row(writer, trd, counted_stat)
 

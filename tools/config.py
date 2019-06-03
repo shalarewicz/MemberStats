@@ -16,7 +16,7 @@ CURRENT_SHEET_ID = 1989883246
 
 def set_test(tst):
     """
-    Assigns test values if the -t or --test flag (config.TEST = True) was provided by the user
+    Assigns test values if the -t or --test flag (tools.TEST = True) was provided by the user
     :return:
     """
     if tst:
@@ -93,7 +93,7 @@ def parser():
     :return:
     """
     # Build args parser to validate mbox file-type and accept optional arguments
-    arg_parser = argparse.ArgumentParser(description='Run weekly stats', parents=[tools.argparser])
+    arg_parser = argparse.ArgumentParser(description='Run weekly stats')
 
     # Optional: -i 1000 will print every 1000 email to help track progress
     arg_parser.add_argument("-i", type=int, default=0, help="print every ith email read")

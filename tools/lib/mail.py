@@ -1,6 +1,6 @@
 from members import MEMBERS
 import stats
-import config
+from tools import config
 import util
 
 
@@ -526,7 +526,7 @@ class OpenInquiry:
         Updates the current open_inquires with any new open inquires and removes those which have been closed.
         Calculates the number of inquires which remained open and the number which were closed.
 
-        Writes the current list of open inquires to 'config.open.txt' which has the following format
+        Writes the current list of open inquires to 'tools/open.txt' which has the following format
             THREAD_ID
             SUBJECT
 
@@ -537,8 +537,8 @@ class OpenInquiry:
         :param inbox: dict(OpenInquiry)
             Inquires currently in the inbox
         :return: (num_open : int, num_closed : int)
-            num_open = Number of inquires in open_inquiries that are also in inbox
-            num_closed = Number of inquires in open_inquiries that are not in inbox
+            num_open = Number of open inquires from the last stats run that are still open
+            num_closed = Number of inquires closed since the last stats run
         """
         num_open = 0
         num_closed = 0
@@ -557,7 +557,7 @@ class OpenInquiry:
 
         open_inquiries.update(new_open_inquiries)
 
-        OpenInquiry._write_to_file(open_inquiries.values(), 'config/open.txt')
+        OpenInquiry._write_to_file(open_inquiries.values(), 'tools/open.txt')
 
         return num_open, num_closed
 
