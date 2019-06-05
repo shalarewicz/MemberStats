@@ -43,7 +43,7 @@ def _get_credentials(support=False):
     # time.
     home_dir = os.path.expanduser('~')
     if support:
-        credential = '/support_token.pikle'
+        credential = '/support_token.pickle'
         scope = SUPPORT_SCOPE
     else:
         credential = '/token.pickle'
