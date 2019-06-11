@@ -25,8 +25,6 @@ except HttpError, e:
     util.print_error("Error: Failed to read Admin data. Please report and resolve. Then re-run stats.")
     raise e
 
-cutoff = util.get_cutoff_date()
-
 threads = {}
 
 if not config.SKIP:
@@ -97,8 +95,6 @@ if not config.SKIP:
 
     for thread in threads:
         trd = threads[thread]
-        if trd.get_oldest_date() < cutoff:
-            trd.dont_count()
 
         for mem in trd.get_members():  # This isn't 100% accurate but good threads with multiple members are rare.
             member_data[mem].update_last_contact(trd.get_last_contact_date())
@@ -179,7 +175,7 @@ else:
 
 # Draft an email
 subject = "Stats as of " + time.strftime("%m/%d/%Y")
-email_body = stats.draft_message(cutoff)
+email_body = stats.draft_message(config.CUTOFF)
 
 try:
     googleAPI.send_message(googleAPI.MAIL_API, "me", config.STATS_EMAIL, subject, email_body)

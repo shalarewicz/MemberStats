@@ -1,5 +1,5 @@
 import argparse
-from oauth2client import tools
+from lib import util
 
 
 # Production Sheets
@@ -135,3 +135,5 @@ def print_param():
 parse()
 set_test(TEST)
 print_param()
+
+CUTOFF = util.get_cutoff_date()

@@ -375,7 +375,7 @@ def count_stats(threads, members):
                 elif trd.is_sales_ping():
                     count_sales_ping()
                 elif trd.is_vm():
-                    count_voicemail()
+                    count_voicemail(trd.get_count())
                     if out is not None:
                         _write_stat_row(writer, trd, "Voicemail")
                 elif trd.is_new_org():

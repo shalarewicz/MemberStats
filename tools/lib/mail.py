@@ -4,6 +4,14 @@ from tools import config
 import util
 
 
+def is_internal(address):
+    """
+    :return: True if the address contains 'irbnet.org' and is not listed
+    in config.INTERNAL_EMAILS.
+    """
+    return 'irbnet.org' in address and all(x not in address for x in config.INTERNAL_EMAILS)
+
+
 class Message(object):
     """Represents a single GMail message
     Attributes:
@@ -68,14 +76,6 @@ class Message(object):
         :return: True if the messages to address is to config.IDEAS_EMAIL
         """
         return config.IDEAS_EMAIL in self.to
-
-    def is_internal(self):
-        """
-        :return: True if the Message's from address matches contains 'irbnet.org' and is not listed
-        in config.INTERNAL_EMAILS.
-        """
-        return all('irbnet.org' in x for x in [self.from_address, self.to]) and \
-            'noreply@irbnet.org' not in self.from_address
 
     def is_to_from_support(self):
         """
@@ -177,10 +177,10 @@ class Thread(object):
         self.id = message.get_thread_id()
 
         self.stat_labels, self.member_labels = message.extract_labels()
-        self.good_thread = True
         self.last_contact_date = None
         self.oldest_date = message.get_date()
-        if not (message.is_from_support() or message.is_internal()):
+        self.good_thread = self.oldest_date >= config.CUTOFF
+        if not (message.is_from_support() or is_internal(message.get_from_address())):
             self.last_contact_date = message.get_date()
         self.check_in_date = None
         self.non_ping = len(self.stat_labels) > 0
@@ -228,11 +228,11 @@ class Thread(object):
                 self.sales_ping = True
                 self.good_thread = True
                 self.checked = True
-        elif not self.checked:
+        elif not self.checked and self.good_thread:
             if message.is_to_from_support() and not self.new_org:
                 self.should_it_count(message, "to and from Support")
-            elif (message.is_internal() or
-                  (message.is_from_support() and message.is_internal() and not self.sales_ping)):
+            elif is_internal(message.get_from_address()) or \
+                    (message.is_from_support() and is_internal(message.get_to()) and not self.sales_ping):
                 self.should_it_count(message, "Internal")
 
         if "check-in call" in message.get_labels():
@@ -300,12 +300,14 @@ class Thread(object):
         for label in new_members:
             self.member_labels.add(label)
 
-        new_date = message.date
+        new_date = message.get_date()
+        if new_date < config.CUTOFF:
+            self.good_thread = False
 
         if self.oldest_date is None or new_date < self.oldest_date:
             self.oldest_date = new_date
 
-        if not (message.is_from_support() or message.is_internal()):
+        if not (message.is_from_support() or is_internal(message.get_from_address())):
             if self.last_contact_date is None or new_date > self.last_contact_date:
                 self.last_contact_date = new_date
 
@@ -505,7 +507,8 @@ class OpenInquiry:
             if not threads[thread_id].checked:
                 if message.is_to_from_support():
                     threads[thread_id].should_it_count(message, 'to and from Support', True)
-                elif message.is_internal():
+                elif is_internal(message.get_from_address()) or \
+                        (message.is_from_support() and is_internal(message.get_to())):
                     threads[thread_id].should_it_count(message, 'internal', True)
 
             for l in config.OPEN_LABELS:
