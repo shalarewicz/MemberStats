@@ -212,21 +212,16 @@ class Thread(object):
                 # A count >= 2 avoids spam pings and genuine new organizations created by a member of the team.
                 if "IRBNet Demo Request" in subject:
                     self.demo = True
-                    self.good_thread = True
                 elif "IRBNet Inquiry From" in subject:
                     self.inquiry = True
-                    self.good_thread = True
                 elif "New Organizations" in message.get_labels():
                     self.new_org = True
-                    self.good_thread = True
             if "IRBNet Help Desk Inquiry" in subject:
                 if "noreply@irbnet.org" not in message.get_from_address():
                     self.message_count -= 1  # Eliminates admin/researcher replies when total vm count is determined.
                 self.vm = True
-                self.good_thread = True
             if "Sales Pings" in message.get_labels():
                 self.sales_ping = True
-                self.good_thread = True
                 self.checked = True
         elif not self.checked and self.good_thread:
             if message.is_to_from_support() and not self.new_org:
