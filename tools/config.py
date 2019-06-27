@@ -10,7 +10,7 @@ MEMBER_STATS_SHEET = 'Member Stats'
 MEMBER_STATS_SHEET_ID = 1220379579
 WEEKLY_STATS_SHEET_ID = '12wQxfv5EOEEsi3zCFwwwAq05SAgvzXoHRZbD33-TQ3o'
 STATS_EMAIL = "andy@irbnet.org"
-ENROLLMENT_DASHBOARD_ID = '1-NXL3_jHqH37-sfkVqSUS2cQ4XMUrILoyvt300iXjNQ'
+ENROLLMENT_DASHBOARD_ID = '1g_EwipY4Yp1WXGrBhvw8Lly4fdieXSPaeiqTxnVGrpg'
 CURRENT_SHEET_ID = 1989883246
 
 
@@ -81,6 +81,7 @@ def parse():
     SKIP = args.skip
     TEST = args.test
     DEBUG = args.debug
+    # TODO if debug = True check that log directory exists
 
 
 def parser():

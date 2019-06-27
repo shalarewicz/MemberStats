@@ -241,7 +241,6 @@ class Thread(object):
         elif config.PING_SUPPORT in labels:
             self.support_ping = True
         elif config.NEW_ORG in labels and self.message_count == 2:
-            print self.subject
             self.new_org = True
         if config.SALES_PING in labels:
             self.sales_ping = True
