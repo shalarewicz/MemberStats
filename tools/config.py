@@ -40,12 +40,23 @@ INTERNAL_EMAILS = ["support@irbnet.org", "ideas@irbnet.org", "noreply@irbnet.org
                    "alerts@irbnet.org", "wizards@irbnet.org", "reportmonitor2@irbnet.org"]
 
 SUPPORT_EMAIL = "support@irbnet.org"
+PING_EMAIL = "noreply@irbnet.org"
 IDEAS_EMAIL = "ideas@irbnet.org"
 SPAM_EMAILS = ["MAILER-DAEMON@LNAPL005.HPHC.org", "Mail Delivery System",
                "dmrn_exceptions@dmrn.dhhq.health.mil", "supportdesk@irbnet.org"]
 
 # Thread "open" Labels. If any label contains any of the below phrases it will be considered open.
 OPEN_LABELS = ["Waiting on", "TO DO", "To Call"]
+VM_ADMIN= "vm/admin"
+VM_SALES = "vm/sales"
+VM_FINANCE = "vm/finance"
+VM_RESEARCHER = "pings/vm"
+PING_DEMO = "pings/demo"
+PING_INQUIRY = "pings/inquiry"
+PING_SUPPORT = "pings"
+SALES_PING = "Sales Pings"
+NEW_ORG = "New Organizations"
+CHECK_IN = "check-in call"
 
 
 # Command line args

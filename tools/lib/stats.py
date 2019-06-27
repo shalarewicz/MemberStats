@@ -100,12 +100,15 @@ class Stat:
         return isinstance(other, Stat) and self._priority > other._priority
 
 
-PINGS = ["Sales Pings", "User Inquiries", "Demo Requests", "New Organizations", "Voicemails", "Total Pings", "Web Form"]
+PINGS = ["Sales Pings", "User Inquiries", "Demo Requests", "Support Pings",
+         "New Organizations", "Voicemails", "Total Pings", "Web Form"]
 
 TOTALS = ["Overall Total New Inquiries", "New Open Inquiries", "New Closed Inquiries", "Existing Open Inquiries Closed",
           "Total Open Inquiries", "Total Closed Inquiries"]
 
 CALL_INFO = ["Sessions", "Sales Calls", "Demos", "Institutions"]
+
+VOICEMAILS = [config.VM_RESEARCHER, config.VM_ADMIN, config.VM_SALES, config.VM_FINANCE]
 
 
 def from_list(lst):
@@ -127,6 +130,7 @@ def from_list(lst):
 PING_STATS = from_list(PINGS)
 TOTAL_STATS = from_list(TOTALS)
 CALL_STATS = from_list(CALL_INFO)
+VM_STATS = from_list(VOICEMAILS)
 
 STAT_LABELS = {}
 
@@ -145,6 +149,13 @@ def count_demo(i=1):
         raise KeyError("Could not increment Demo Request")
 
 
+def count_support_ping(i=1):
+    try:
+        PING_STATS["Support Pings"].increment(i)
+    except KeyError:
+        raise KeyError("Could not increment Support Pings")
+
+
 def count_new_org(i=1):
     try:
         PING_STATS["New Organizations"].increment(i)
@@ -152,11 +163,33 @@ def count_new_org(i=1):
         raise KeyError("Could not increment New Orgs")
 
 
-def count_voicemail(i=1):
+def count_admin_vm(i=1):
     try:
+        VM_STATS[config.VM_ADMIN].increment(i)
+    except KeyError:
+        raise KeyError("Could not increment Admin VM")
+
+
+def count_sales_vm(i=1):
+    try:
+        VM_STATS[config.VM_SALES].increment(i)
+    except KeyError:
+        raise KeyError("Could not increment Admin VM")
+
+
+def count_finance_vm(i=1):
+    try:
+        VM_STATS[config.VM_FINANCE].increment(i)
+    except KeyError:
+        raise KeyError("Could not increment Admin VM")
+
+
+def count_res_vm(i=1):
+    try:
+        VM_STATS[config.VM_RESEARCHER].increment(i)
         PING_STATS["Voicemails"].increment(i)
     except KeyError:
-        raise KeyError("Could not increment VM")
+        raise KeyError("Could not increment Researcher VM")
 
 
 def count_sales_ping(i=1):
@@ -265,8 +298,8 @@ def format_stats():
     total_pings = PING_STATS["User Inquiries"].get_count() + PING_STATS["Demo Requests"].get_count() + \
         PING_STATS["Welcome to Support"].get_count() + PING_STATS["Welcome Ping"].get_count() + \
         PING_STATS["Sales"].get_count() + PING_STATS["New Organizations"].get_count() + \
-        PING_STATS["Sales Pings"].get_count() + \
-        PING_STATS["Voicemails"].get_count()
+        PING_STATS["Sales Pings"].get_count() + PING_STATS["Voicemails"].get_count() + \
+        PING_STATS["Support Pings"].get_count()
 
     # Combine pings
     sp = PING_STATS["Sales Pings"].get_count()
@@ -350,60 +383,79 @@ def count_stats(threads, members):
     for thread in threads:
         trd = threads[thread]
         if trd.is_good():
-            if not trd.is_non_ping():
-                #  Handle Pings
-                if trd.is_inquiry():
-                    if trd.is_sales_ping():
-                        count_web_form()
-                        count_sales_ping()
-                        if out is not None:
-                            _write_stat_row(writer, trd, "Sales Pings")
-                    else:
-                        count_user_inquiry()
-                        if out is not None:
-                            _write_stat_row(writer, trd, "Inquiry")
-                elif trd.is_demo():
-                    if trd.is_sales_ping():
-                        count_web_form()
-                        count_sales_ping()
-                        if out is not None:
-                            _write_stat_row(writer, trd, "Sales Pings")
-                    else:
-                        if out is not None:
-                            _write_stat_row(writer, trd, "Demo")
-                        count_demo()
-                elif trd.is_sales_ping():
-                    count_sales_ping()
-                elif trd.is_vm():
-                    count_voicemail(trd.get_count())
-                    if out is not None:
-                        _write_stat_row(writer, trd, "Voicemail")
-                elif trd.is_new_org():
-                    count_new_org()
-                    if out is not None:
-                        _write_stat_row(writer, trd, "New Org")
-            else:
-                # Handle Non-pings, Count lowest priority stat only
-                sorted_stats = _sort_stats(trd.get_stats(), STAT_LABELS)
-                if len(sorted_stats) > 0:
-                    counted_stat = sorted_stats[0]
-                    STAT_LABELS[counted_stat].increment()
-                    # Sales inquiries are considered Pings
-                    if counted_stat not in ["Sales"]:
-                        if trd.is_closed():
-                            count_new_closed()
-                        else:
-                            count_new_open()
-                            open_inquiries[trd.get_id()] = mail.OpenInquiry(trd.get_id(), trd.get_subject())
-                        if out is not None:
-                            _write_stat_row(writer, trd, counted_stat)
+            if trd.is_admin_vm():
+                count_admin_vm()
+                if out is not None:
+                    _write_stat_row(writer, trd, "Admin VM")
+            elif trd.is_res_vm():
+                count_res_vm(trd.get_count())
+                if out is not None:
+                    _write_stat_row(writer, trd, "Researcher VM")
+            elif trd.is_finance_vm():
+                count_finance_vm()
+                if out is not None:
+                    _write_stat_row(writer, trd, "Finance VM")
+            elif trd.is_sales_vm():
+                count_sales_vm()
+                if out is not None:
+                    _write_stat_row(writer, trd, "Sales VM")
 
-                    for mem in trd.get_members():
-                        for stat in sorted_stats:
-                            members[mem].increment_stat(STAT_LABELS[stat].get_priority())
+            #  Handle Pings
+            if trd.is_inquiry():
+                if trd.is_sales_ping():
+                    count_web_form()
+                    count_sales_ping()
+                    if out is not None:
+                        _write_stat_row(writer, trd, "Sales Pings")
                 else:
-                    # TODO Error Log
-                    pass
+                    count_user_inquiry()
+                    if out is not None:
+                        _write_stat_row(writer, trd, "Inquiry")
+            elif trd.is_demo():
+                if trd.is_sales_ping():
+                    count_web_form()
+                    count_sales_ping()
+                    if out is not None:
+                        _write_stat_row(writer, trd, "Sales Pings")
+                else:
+                    if out is not None:
+                        _write_stat_row(writer, trd, "Demo")
+                    count_demo()
+            elif trd.is_support_ping():
+                if out is not None:
+                    _write_stat_row(writer, trd, "Support Ping")
+                count_support_ping()
+            elif trd.is_sales_ping():
+                count_sales_ping()
+                if out is not None:
+                    _write_stat_row(writer, trd, "Sales Pings")
+            elif trd.is_new_org():
+                count_new_org()
+                if out is not None:
+                    _write_stat_row(writer, trd, "New Org")
+
+            # Handle Non-pings, Count lowest priority stat only
+            sorted_stats = _sort_stats(trd.get_stats(), STAT_LABELS)
+            if len(sorted_stats) > 0:
+                counted_stat = sorted_stats[0]
+                STAT_LABELS[counted_stat].increment()
+                # Sales inquiries are considered Pings
+                if counted_stat not in ["Sales"]:
+                    if trd.is_closed():
+                        count_new_closed()
+                    else:
+                        count_new_open()
+                        open_inquiries[trd.get_id()] = mail.OpenInquiry(trd.get_id(), trd.get_subject())
+                    if out is not None:
+                        _write_stat_row(writer, trd, counted_stat)
+
+                for mem in trd.get_members():
+                    for stat in sorted_stats:
+                        members[mem].increment_stat(STAT_LABELS[stat].get_priority())
+            else:
+                # TODO Error Log
+                pass
+
     if out is not None:
         out.close()
     return open_inquiries
@@ -489,7 +541,7 @@ def draft_message(cutoff):
     pings_less_sales = str(total_pings - int(sp[:str(sp).find("(")]))  # This removes web forms.
     total = str(total_pings + total_non_pings)
 
-    txt = "Andy, \n\n " \
+    txt = "Andy, \n\n" \
         "Below are the requested statistics from " + str(start_weekday) + ", " + start_date + " to " + \
           str(today_weekday) + ", " + str(today) + ":\n\n" \
         "Pings (includes New Orgs; no Sales Pings): " + pings_less_sales + "\n" \
@@ -501,6 +553,10 @@ def draft_message(cutoff):
         "Total Existing Open Inquiries Closed: " + str(TOTAL_STATS["Existing Open Inquiries Closed"].get_count()) + \
           "\nTotal Open Inquiries: " + str(TOTAL_STATS["Total Open Inquiries"].get_count()) + "\n" \
         "Total Closed Inquiries: " + str(TOTAL_STATS["Total Closed Inquiries"].get_count()) + "\n\n" \
+        "Total Researcher VMs: " + str(VM_STATS[config.VM_RESEARCHER].get_count()) + "\n" \
+        "Total Admin VMs: " + str(VM_STATS[config.VM_ADMIN].get_count()) + "\n" \
+        "Total Finance VMs: " + str(VM_STATS[config.VM_FINANCE].get_count()) + "\n" \
+        "Total Sales VMs: " + str(VM_STATS[config.VM_SALES].get_count()) + "\n\n" \
         "Total # of Sessions: " + str(CALL_STATS["Sessions"].get_count()) + "\n" \
         "Total # of Sales Calls: " + str(CALL_STATS["Sales Calls"].get_count()) + "\n" \
         "Total # of Demo Calls: " + str(CALL_STATS["Demos"].get_count()) + " " + \
@@ -547,6 +603,8 @@ def update_weekly_support_stats(service, spreadsheet_id, sheet_id=0):
 
         CALL_STATS
 
+        VM_STATS
+
     :param service: Authorized Google Sheets service to access the Sheets APU
     :param spreadsheet_id: Spreadsheet ID for the sheet that will be updated.
     :param sheet_id: Google Sheet ID for the sheet that will be updated.
@@ -561,15 +619,18 @@ def update_weekly_support_stats(service, spreadsheet_id, sheet_id=0):
     values.extend(add_stats(TOTAL_STATS))
     values.append(("", 'STRING'))
     values.extend(add_stats(CALL_STATS))
-    insert_column_request = googleAPI.insert_column_request(sheet_id, values, 0, 39, 2, 3)
+    values.append(("", 'STRING'))
+    values.extend(add_stats(VM_STATS))
+    insert_column_request = googleAPI.insert_column_request(sheet_id, values, 0, len(values), 2, 3)
     try:
         googleAPI.spreadsheet_batch_update(service, spreadsheet_id, insert_column_request)
     except HttpError:
         util.print_error("Failed to update Weekly Support Stats. ")
         try:
-            out_file = open('stats.csv', 'w')
+            out_file = open('stats.csv', 'wb')
             out = csv.writer(out_file)
             for (v, t) in values:
+                print (v, t)
                 out.writerow([v])
             print "Use stats.csv to update Weekly Support Stats Sheet"
             out_file.close()

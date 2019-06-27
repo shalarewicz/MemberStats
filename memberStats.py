@@ -585,7 +585,7 @@ def extractInfo(threadID, labels, date, goodMessage):
 
 
 def shouldItCount(fromAddress, to, subject, date, labels, emailType):
-    if not COUNT_ALL or COUNT_NONE:
+    if not (COUNT_ALL or COUNT_NONE):
         threads[threadID].checked = True
         print ""
         print "Found " + emailType +" email. Should the following message be counted?"

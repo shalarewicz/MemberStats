@@ -155,8 +155,16 @@ class Thread(object):
             True if subject contains 'IRBNet Demo Request' and message_count >= 2
         inquiry : boolean
             True if subject contains 'IRBNet Inquiry From' and message_count >= 2
-        vm : boolean
-            True if subject contains 'IRBNet Help Desk Inquiry' and count >= 2
+        support_ping : boolean
+            True if the thread is a researcher ping that was not sent via web form.
+        admin_vm : boolean
+            True if the thread deals with a voicemail from an administrator
+        res_vm: boolean
+            True if the thread deals with a voicemail from a researcher
+        sales_vm: boolean
+            True if the thread deals with a voicemail for the Sales line
+        finance_vm: boolean
+            True if the thread deals with a voicemail for the Finance line
         new_org : boolean
             True if message labels contains label 'New Organizations' and count >= 2
         sales_ping : boolean
@@ -186,7 +194,11 @@ class Thread(object):
         self.non_ping = len(self.stat_labels) > 0
         self.demo = False
         self.inquiry = False
-        self.vm = False
+        self.support_ping = False
+        self.res_vm = False
+        self.admin_vm = False
+        self.sales_vm = False
+        self.finance_vm = False
         self.new_org = False
         self.sales_ping = False
         self.message_count = 1
@@ -206,33 +218,49 @@ class Thread(object):
             message being evaluated.
         :return: None
         """
-        subject = message.get_subject()
-        if not self.non_ping:
-            if self.message_count == 2:
-                # A count >= 2 avoids spam pings and genuine new organizations created by a member of the team.
-                if "IRBNet Demo Request" in subject:
-                    self.demo = True
-                elif "IRBNet Inquiry From" in subject:
-                    self.inquiry = True
-                elif "New Organizations" in message.get_labels():
-                    self.new_org = True
-            if "IRBNet Help Desk Inquiry" in subject:
-                if "noreply@irbnet.org" not in message.get_from_address():
-                    self.message_count -= 1  # Eliminates admin/researcher replies when total vm count is determined.
-                self.vm = True
-            if "Sales Pings" in message.get_labels():
-                self.sales_ping = True
-                self.checked = True
-        elif not self.checked and self.good_thread:
-            if message.is_to_from_support() and not self.new_org:
-                self.should_it_count(message, "to and from Support")
-            elif is_internal(message.get_from_address()) or \
-                    (message.is_from_support() and is_internal(message.get_to()) and not self.sales_ping):
-                self.should_it_count(message, "Internal")
 
-        if "check-in call" in message.get_labels():
-            if self.check_in_date is None or self.check_in_date < message.get_date():
-                self.check_in_date = message.get_date()
+        labels = message.get_labels()
+
+        if config.VM_ADMIN in labels:
+            self.admin_vm = True
+        elif config.VM_RESEARCHER in labels:
+            self.res_vm = True
+            if config.PING_EMAIL not in message.get_from_address():
+                self.message_count -= 1  # Eliminates admin/researcher replies when total vm count is determined.
+        elif config.VM_SALES in labels:
+            self.sales_vm = True
+            # Do not decrease thread count as additional messages between Support and the Sales Team may be exchanged
+        elif config.VM_FINANCE in labels:
+            self.finance_vm = True
+            # Do not decrease thread count as additional messages between Support and the Sales Team may be exchanged
+
+        if config.PING_DEMO in labels:
+            self.demo = True
+        elif config.PING_INQUIRY in labels:
+            self.inquiry = True
+        elif config.PING_SUPPORT in labels:
+            self.support_ping = True
+        elif config.NEW_ORG in labels and self.message_count == 2:
+            print self.subject
+            self.new_org = True
+        if config.SALES_PING in labels:
+            self.sales_ping = True
+            self.checked = True
+            if "IRBNet Demo Request" in message.get_subject():
+                self.demo = True
+            elif "IRBNet Inquiry From" in message.get_subject():
+                self.inquiry = True
+
+        if self.non_ping:
+            if not self.checked and self.good_thread:
+                if message.is_to_from_support() and not self.new_org:
+                    self.should_it_count(message, "to and from Support")
+                elif is_internal(message.get_from_address()) or \
+                        (message.is_from_support() and is_internal(message.get_to()) and not self.sales_ping):
+                    self.should_it_count(message, "Internal")
+            if config.CHECK_IN in labels:
+                if self.check_in_date is None or self.check_in_date < message.get_date():
+                    self.check_in_date = message.get_date()
 
         for l in config.OPEN_LABELS:
             if any(l in label for label in message.get_labels()):
@@ -349,8 +377,20 @@ class Thread(object):
     def is_demo(self):
         return self.demo
 
-    def is_vm(self):
-        return self.vm
+    def is_support_ping(self):
+        return self.support_ping
+
+    def is_res_vm(self):
+        return self.res_vm
+
+    def is_admin_vm(self):
+        return self.admin_vm
+
+    def is_finance_vm(self):
+        return self.finance_vm
+
+    def is_sales_vm(self):
+        return self.sales_vm
 
     def is_new_org(self):
         return self.new_org
