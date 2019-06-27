@@ -1,4 +1,3 @@
-Create Json file from an IRBNet account. Currently the project is setup using shalarewicz@gmail.com. This will need to change if Stephan leaves. Can also create a separate GMail account if Google Developer's Console can't be turned on for the IRBNet Organization. 
 
 Go through and check admin emails for Support Outreach Admins
 
@@ -6,11 +5,3 @@ frequency, weekly, monthly, quarterly, annually of inquiries.
  -need to compute a moving average, need to store 52 weeks worth of data
  	store data using a FIFO queue / deque in a hidden csv file. 
  - alternatively do it the lazy way and use go-live date to compute averages. 
-
-DateTime objects?
-
-Read mail from Support Inbox to skip the export step. 
-
-Remove apostrophe being written in Date Header on Weekly Support Stats Sheet
-
-When reading in remove blanks
