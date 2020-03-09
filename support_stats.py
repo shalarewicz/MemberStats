@@ -157,7 +157,7 @@ new_title = time.strftime('%m/%d')
 
 try:
     print "Updating Enrollment Dashboard..."
-    duplicate_request = googleAPI.duplicate_sheet_request(config.CURRENT_SHEET_ID, new_title, 2)
+    duplicate_request = googleAPI.duplicate_sheet_request(config.CURRENT_SHEET_ID, new_title, 3)
     googleAPI.spreadsheet_batch_update(googleAPI.SHEETS_API, config.ENROLLMENT_DASHBOARD_ID, [duplicate_request])
     print "...done"
 except HttpError:
