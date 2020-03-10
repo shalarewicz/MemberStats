@@ -4,6 +4,7 @@ from email.mime.text import MIMEText
 import pickle
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
+from google.auth.exceptions import RefreshError
 
 from util import print_error
 try:
@@ -58,7 +59,17 @@ def _get_credentials(support=False):
             creds = pickle.load(token)
     if not creds or not creds.valid:
         if creds and creds.expired and creds.refresh_token:
-            creds.refresh(Request())
+            try:
+                print "refreshing...." + credential_path
+                creds.refresh(Request())
+            except RefreshError, e:
+                # Catch any problems refreshing the existing credential. This will not catch refresh errors if the
+                # user has changed their password in the last six hours. Manually delete the credential in those cases.
+                raw_input("Unable to authenticate. Deleting existing credential. Please re-authenticate: "
+                          + credential_path + " , Support: " + str(support) +
+                          ". Press enter to continue with authentication.")
+                os.remove(credential_path)
+                raise e
         else:
             if support:
                 raw_input("You will now be asked to authenticate access for the Support Inbox. "
@@ -73,9 +84,27 @@ def _get_credentials(support=False):
     return creds
 
 
-MAIL_API = build('gmail', 'v1', credentials=_get_credentials())
-SHEETS_API = build('sheets', 'v4', credentials=_get_credentials())
-SUPPORT_MAIL_API = build('gmail', 'v1', credentials=_get_credentials(True))
+def _get_api(name, version, support, timeout):
+    """
+    Retrieves the specified google api
+    :param name: name of the api being requested (i.e. gmail, sheets)
+    :param version: version of the requested api
+    :param support: boolean indicating if this api is being obtained for a support account
+    :param timeout: number of attempts to access the api
+    :return:
+    """
+
+    if timeout == 0:
+        raise RuntimeError("Unable to obtain authentication credentials. Please contact Stephan")
+    try:
+        return build(name, version, credentials=_get_credentials(support))
+    except RefreshError:
+        return _get_api(name, version, _get_credentials(support), timeout - 1)
+
+
+MAIL_API = _get_api('gmail', 'v1', False, 3)
+SHEETS_API = _get_api('sheets', 'v4', False, 3)
+SUPPORT_MAIL_API = _get_api('gmail', 'v1', True, 3)
 
 
 def get_range(rng, sheet_id, sheet_api, dimension='ROWS', values_only=True):
