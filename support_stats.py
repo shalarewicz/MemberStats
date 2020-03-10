@@ -61,7 +61,10 @@ if not config.SKIP:
         print 'Done reading inbox for open inquiries.'
 
     print "Reading stats label...."
-    gmail_messages = googleAPI.get_messages(googleAPI.SUPPORT_MAIL_API, 'me', 'label:stats')
+    start_date = config.CUTOFF.strftime('%Y/%m/%d')
+    end_date = util.add_days(config.END_CUTOFF, 1).strftime('%Y/%m/%d')
+    query = "after:" + start_date + " before:" + end_date + " -label:no-reply"
+    gmail_messages = googleAPI.get_messages(googleAPI.SUPPORT_MAIL_API, 'me', query)
     print "...done"
 
     print "Building thread data..."
@@ -163,7 +166,7 @@ try:
 except HttpError:
     util.print_error("Error: Failed to duplicate current tab on Enrollment Dashboard. See steps below.")
     print '1. Duplicate Tab and rename as ' + new_title + ". If a conflict tab exists, rename the conflict tab."
-    print '2. Copy all cells on duplicated tab and paste as values to remove forumulas'
+    print '2. Copy all cells on duplicated tab and paste as values to remove formulas'
     print '3. Go to "Data -> Named Ranges" and remove all named ranges associated with the duplicated sheet'
     print '4. Delete all call information on the "Current" Tab of the Enrollment Dashboard'
     raw_input("Press enter to continue.")

@@ -148,4 +148,8 @@ parse()
 set_test(TEST)
 print_param()
 
-CUTOFF = util.get_cutoff_date()
+CUTOFF = util.get_cutoff_date("\nOn which date were stats last run?\n"
+                              "i.e. What is the earliest date for which stats should count, typically last Thursday?\n")
+
+# This date is inclusive of when stats should count.
+END_CUTOFF = util.get_cutoff_date("\nEnter the final date for which stats should count. Typically this Wednesday.\n")

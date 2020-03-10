@@ -1,25 +1,34 @@
 # Utility
 from dateutil import parser, tz
 from sys import stderr
+from datetime import timedelta
 
 
-def get_cutoff_date():
+def get_cutoff_date(message):
     """
     Prompt user to enter the earliest date for which stats should count.
     :return: A datetime object for the user entered date.
     """
     try:
-        cutoff = parse_date(raw_input(
-                "\nOn which date were stats last run?\n"
-                "i.e. What is the earliest date for which stats should count (typically last Thursday)?\n"))
+        cutoff = parse_date(raw_input(message))
         if cutoff is None:
             print "Date not in an accepted format (MM/DD/YYYY)\nPlease try again."
-            return get_cutoff_date()
+            return get_cutoff_date(message)
         else:
             return cutoff
     except ValueError:
         print "Date not in an accepted format (MM/DD/YYYY)\nPlease try again."
-        return get_cutoff_date()
+        return get_cutoff_date(message)
+
+
+def add_days(date, days):
+    """
+    Adds the specified number of days to date.
+    :param date: original date
+    :param days: days to be added.
+    :return: the new date
+    """
+    return date + timedelta(days=days)
 
 
 def parse_date(date, fuzzy=True, day_first=False, tz_info=tz.tzoffset('EDT', -14400)):

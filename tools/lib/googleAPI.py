@@ -339,7 +339,7 @@ def spreadsheet_batch_update(service, spreadsheet_id, requests):
         request_names = []
         for request in requests:
             request_names.append(request.keys())
-        print_error('Error: Batch update failed. Sheet: ' + str(spreadsheet_id) + 'Requests: ' + str(request_names))
+        print_error('Error: Batch update failed. Sheet: ' + str(spreadsheet_id) + ', Requests: ' + str(request_names))
         raise e
 
 
@@ -515,5 +515,5 @@ def get_messages(service, user_id='me', query=''):
         return result
 
     except HttpError, e:
-        print_error('Error: Failed to retrieve messages for: ' + str(user_id) + 'using query: ' + str(query))
+        print_error('Error: Failed to retrieve messages for: ' + str(user_id) + ' using query: ' + str(query))
         raise e
