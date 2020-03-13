@@ -23,7 +23,7 @@ def set_test(tst):
         global SPREADSHEET_ID, ADMIN_SHEET, ADMIN_SHEET_ID, MEMBER_STATS_SHEET, MEMBER_STATS_SHEET_ID, \
             WEEKLY_STATS_SHEET_ID, STATS_EMAIL, ENROLLMENT_DASHBOARD_ID, CURRENT_SHEET_ID
         # Testing Sheets / Ranges
-        SPREADSHEET_ID = '1Vuozw7SwH4T-w6kAivL0nxLpdc3KpCFyQG8JeLlhPp8'
+        SPREADSHEET_ID = '16bXxrmnH6SC6DnUbgyLke-749GxBc4gw-6AhcHgXjZ0'
         ADMIN_SHEET = 'Support Outreach Administrators'
         ADMIN_SHEET_ID = 452292035
         MEMBER_STATS_SHEET = 'Member Stats'
@@ -37,9 +37,10 @@ def set_test(tst):
 # Support email settings. These addresses will be skipped when determining if a messages was sent internally.
 INTERNAL_EMAILS = ["support@irbnet.org", "ideas@irbnet.org", "noreply@irbnet.org", "supportdesk@irbnet.org",
                    "techsupport@irbnet.org", "report_heartbeat@irbnet.org", "report_monitor@irbnet.org",
-                   "alerts@irbnet.org", "wizards@irbnet.org", "reportmonitor2@irbnet.org"]
+                   "alerts@irbnet.org", "wizards@irbnet.org", "reportmonitor2@irbnet.org", "govsupport@irbnet.org"]
 
 SUPPORT_EMAIL = "support@irbnet.org"
+GOV_SUPPORT_EMAIL = "govsupport@irbnet.org"
 PING_EMAIL = "noreply@irbnet.org"
 IDEAS_EMAIL = "ideas@irbnet.org"
 SPAM_EMAILS = ["MAILER-DAEMON@LNAPL005.HPHC.org", "Mail Delivery System",
@@ -47,7 +48,7 @@ SPAM_EMAILS = ["MAILER-DAEMON@LNAPL005.HPHC.org", "Mail Delivery System",
 
 # Thread "open" Labels. If any label contains any of the below phrases it will be considered open.
 OPEN_LABELS = ["Waiting on", "TO DO", "To Call"]
-VM_ADMIN= "vm/admin"
+VM_ADMIN = "vm/admin"
 VM_SALES = "vm/sales"
 VM_FINANCE = "vm/finance"
 VM_RESEARCHER = "pings/vm"
@@ -153,3 +154,10 @@ CUTOFF = util.get_cutoff_date("\nOn which date were stats last run?\n"
 
 # This date is inclusive of when stats should count.
 END_CUTOFF = util.get_cutoff_date("\nEnter the final date for which stats should count. Typically this Wednesday.\n")
+
+# The following query is used to search the inbox
+start_date = CUTOFF.strftime('%Y/%m/%d')
+end_date = util.add_days(END_CUTOFF, 1).strftime('%Y/%m/%d')
+
+QUERY = "after:" + start_date + " before:" + end_date + " -label:no-reply -label:Report-Heartbeat " \
+                                                        "-label:-googlespam -label:-180spam -label:WebEx"

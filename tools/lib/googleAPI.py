@@ -478,7 +478,7 @@ def get_labels(service, user_id='me'):
     Obtain a dictionary of label IDs mapped to their respective label name.
     :param service: Mail API service used to obtain the lables. Must have read access to user's mail
     :param user_id: default to 'me'
-    :return: dictionairy (key, value) = (id, name)
+    :return: dictionary (key, value) = (id, name)
     """
     try:
         response = service.users().labels().list(userId=user_id).execute()
@@ -494,6 +494,14 @@ def get_labels(service, user_id='me'):
 
 
 def get_message(service, user_id, msg_id, labels):
+    """
+    Gets the specified message
+    :param service: Mail API service used to obtain the messages. Must have read access to user's mail
+    :param user_id: default to 'me':
+    :param msg_id: message to be fetched
+    :param labels: dictionary mapping label ids to label name
+    :return: message in JSON format containing 'X-GM-THRID', 'X-Gmail-Labels', 'To', 'From', 'Subject', 'Date'
+    """
     to_find = ['To', 'From', 'Subject', 'Date']
     try:
         response = service.users().messages().get(
@@ -545,4 +553,103 @@ def get_messages(service, user_id='me', query=''):
 
     except HttpError, e:
         print_error('Error: Failed to retrieve messages for: ' + str(user_id) + ' using query: ' + str(query))
+        raise e
+
+
+def get_thread_ids(service, user_id='me', query=''):
+    """
+    Obtains a list of all gmail threadsIds where the thread contains at least one message matching the query.
+    :param service: Mail API service used to obtain the messages. Must have read access to user's mail
+    :param user_id: default to 'me'
+    :param query: gmail query used to search for messages.
+    :return: list of messages. message.keys() = 'X-GM-THRID' , Subject, To, From and 'X-Gmail-Labels'
+    """
+    try:
+        response = service.users().messages().list(userId=user_id, q=query).execute()
+        thread_ids = set()
+
+        while 'nextPageToken' in response:
+            # Read threadIds on current page.
+            for message in response['messages']:
+                thread_ids.add(message["threadId"])
+
+            # Advance to next page.
+            page_token = response['nextPageToken']
+            response = service.users().messages().list(userId=user_id, q=query,
+                                                       pageToken=page_token).execute()
+        # Get threadIds from last page.
+        if 'messages' in response:
+            for message in response['messages']:
+                thread_ids.add(message["threadId"])
+
+        return thread_ids
+
+    except HttpError, e:
+        print_error('Error: Failed to retrieve messages for: ' + str(user_id) + ' using query: ' + str(query))
+        raise e
+
+
+def get_messages_from_thread_ids(service, threads, user_id='me'):
+    """
+    Obtains every message in the specified threadIds
+    :param service: Mail API service used to obtain the messages. Must have read access to user's mail
+    :param threads: list of gmail threadIds
+    :param user_id: default to 'me'
+    :return: list of messages. message.keys() = 'X-GM-THRID' , Subject, To, From and 'X-Gmail-Labels'
+    """
+    try:
+        result = []
+        labels = get_labels(service, user_id)
+        for thread in threads:
+            thread_response = service.users().threads().get(userId='me', id=thread).execute()
+            messages = thread_response["messages"]
+            for message in messages:
+                new_message = get_message(service, user_id, message['id'], labels)
+                if new_message is not None:
+                    result.append(new_message)
+        return result
+
+    except HttpError, e:
+        print_error('Error: Failed to retrieve messages from thread ids for: ' + str(user_id))
+        raise e
+
+
+def get_messages_from_threads(service, user_id='me', query=''):
+    """
+    Obtains a list of gmail messages containing Thread ID, Subject, To, From and Labels
+    :param service: Mail API service used to obtain the messages. Must have read access to user's mail
+    :param user_id: default to 'me'
+    :param query: gmail query used to search for messages. All messages in thread must match query.
+    :return: list of messages. message.keys() = 'X-GM-THRID' , Subject, To, From and 'X-Gmail-Labels'
+    """
+    try:
+        # response has format {"threads": [threadResource], "resultSizeEstimate": 1, "nextPageToken": "xxxx"}
+        # threadResource has format {"id": "xxxx", "snippet": "xxxxx", "historyId": "xxxxx"}
+        response = service.users().threads().list(userId=user_id, q=query).execute()
+        threads = set()
+        if 'threads' in response:
+            for thread in response['threads']:
+                threads.add(thread["id"])
+
+        while 'nextPageToken' in response:
+            page_token = response['nextPageToken']
+            response = service.users().threads().list(userId=user_id, q=query,
+                                                      pageToken=page_token).execute()
+            for thread in response['threads']:
+                threads.add(thread["id"])
+
+        labels = get_labels(service, user_id)
+        result = []
+
+        for thread in threads:
+            thread_response = service.users().threads().get(userId='me', id=thread).execute()
+            messages = thread_response["messages"]
+            for message in messages:
+                new_message = get_message(service, user_id, message['id'], labels)
+                if new_message is not None:
+                    result.append(new_message)
+        return result
+
+    except HttpError, e:
+        print_error('Error: Failed to retrieve thread messages for: ' + str(user_id) + ' using query: ' + str(query))
         raise e

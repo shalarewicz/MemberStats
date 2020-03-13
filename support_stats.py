@@ -1,70 +1,90 @@
 import csv
-import time
 from tools import config
 from tools.lib import mail, members, stats, util, googleAPI
 from googleapiclient.errors import HttpError
 
-# Read in existing member stats and stat labels from the Retention sheet
-member_data, stat_labels, admins, admin_emails = None, None, None, None
-try:
-    member_data, stat_labels = \
-        members.Member.read_members(config.MEMBER_STATS_SHEET, config.SPREADSHEET_ID, googleAPI.SHEETS_API)
-    stats.extract_labels(stat_labels)
-except HttpError, e:
-    util.print_error("Error: Failed to read Member data. Please report and resolve. Then re-run stats.")
-    raise e
 
-print "\nThe following Statistics will be determined..."
-for stat in sorted(stats.STAT_LABELS):
-    print stat
+def read_members(mem_stats_sheet, retention_sheet_id, sheets_api, stat_header_index):
+    """
+    Read in existing member stats and stat labels from the Retention sheet
+    :param mem_stats_sheet: Sheet name for Member Stats tab on sheet specified by retention_sheet_id
+    :param retention_sheet_id: Google Sheet ID for Retention sheet. Must contain mem_stats_sheet
+    :param sheets_api: Sheets api used to execute the query
+    :param stat_header_index: Start index (inclusive) of values that will be returned from the mem_stats_sheet header
+    :return: member dictionary with (k,v) = (name, Member() object), mem_stats_sheet header[stat_header_index:]
+    """
+    try:
+        member_data, stat_labels = \
+            members.Member.read_members(mem_stats_sheet, retention_sheet_id, sheets_api, stat_header_index)
+    except HttpError, e:
+        util.print_error("Error: Failed to read Member data. Please report and resolve. Then re-run stats.")
+        raise e
 
-# Read in Admin Data from the Retention sheet
-try:
-    admins, admin_emails = members.Admin.read_admins(config.ADMIN_SHEET, config.SPREADSHEET_ID, googleAPI.SHEETS_API)
-except HttpError, e:
-    util.print_error("Error: Failed to read Admin data. Please report and resolve. Then re-run stats.")
-    raise e
+    return member_data, stat_labels
 
-threads = {}
 
-if not config.SKIP:
-    # Obtain mail from Support Inbox and begin thread counting
-    i = 0
+def read_admins(admin_sheet, retention_sheet_id, sheets_api):
+    # Read in Admin Data from the Retention sheet
+    try:
+        admins, admin_emails = members.Admin.read_admins(admin_sheet, retention_sheet_id, sheets_api)
+    except HttpError, e:
+        util.print_error("Error: Failed to read Admin data. Please report and resolve. Then re-run stats.")
+        raise e
+    return admins, admin_emails
 
-    mail_out, fmail_out, mail_writer, fmail_writer = None, None, None, None
-    if config.DEBUG:
-        #  Open log files
-        mail_out = open('tools/logs/mail.csv', 'wb')
-        fmail_out = open('tools/logs/formatted_mail.csv', 'wb')
-        mail_writer = csv.writer(mail_out)
-        mail_writer.writerow(['Thread ID', 'Date', 'From', 'To', 'Subject', 'X-Gmail-Labels'])
-        fmail_writer = csv.writer(fmail_out)
-        fmail_writer.writerow(['Thread ID', 'Date', 'From', 'To', 'Subject', 'Labels'])
 
+def update_admin_dates(threads, admins, admin_emails):
+    for thread in threads:
+        for msg in threads[thread].messages:
+            if msg.get_from_address() in admin_emails:
+                admin = admins[admin_emails[msg.get_from_address()]]
+                admin.update_last_contact(msg.get_date())
+                if "check-in call" in msg.get_labels():
+                    admin.update_check_in(msg.get_date())
+
+
+def read_inbox(stat_counter, file_base, support_mail_api):
     print "\nReading Support Inbox..."
-    inbox = googleAPI.get_messages(googleAPI.SUPPORT_MAIL_API, "me", "label:Inbox")
+    inbox = googleAPI.get_messages_from_threads(support_mail_api, "me", "label:Inbox")
     print "...done"
 
     try:
         print "Reading open inquires"
-        open_inquiries = mail.OpenInquiry.from_file("tools/open.txt")
+        open_inquiries = mail.OpenInquiry.from_file('tools/' + file_base + 'open.txt')
         print "...done"
     except IOError:
-        util.print_error('ERROR: open.txt not found or not formatted properly. '
-                         'Please check to see if the tools folder contains open.txt')
+        util.print_error('ERROR: ' + file_base + 'open.txt not found or not formatted properly. '
+                         'Please check to see if the tools folder contains ' + file_base + 'open.txt')
         print 'This file will need to be reconstructed. You will be asked to go through the current inbox to rebuild ' \
               'the file.'
         print 'Alternatively, you may locate/restore the prior version of open.txt to the tools folder and ' \
               're-run the script. This is recommended.'
         raw_input("Press enter to rebuild the file OR exit the script to locate and restore the file.")
-        open_inquiries = mail.OpenInquiry.from_current_inbox(inbox)
+        open_inquiries = mail.OpenInquiry.from_current_inbox(inbox, stat_counter.stat_labels)
         print 'Done reading inbox for open inquiries.'
 
+    return inbox, open_inquiries
+
+
+def read_stats(stat_counter, file_base, support_mail_api, start_date, end_date):
+    threads = {}
+
+    # Obtain mail from Support Inbox and begin thread counting
+    i = 0
+    if config.TEST:
+        file_base = "test_"+file_base
+    mail_out, fmail_out, mail_writer, fmail_writer = None, None, None, None
+    if config.DEBUG:
+        #  Open log files
+        mail_out = open('tools/logs/' + file_base + 'mail.csv', 'wb')
+        fmail_out = open('tools/logs/' + file_base + 'formatted_mail.csv', 'wb')
+        mail_writer = csv.writer(mail_out)
+        mail_writer.writerow(['Thread ID', 'Date', 'From', 'To', 'Subject', 'X-Gmail-Labels'])
+        fmail_writer = csv.writer(fmail_out)
+        fmail_writer.writerow(['Thread ID', 'Date', 'From', 'To', 'Subject', 'Labels'])
+
     print "Reading stats label...."
-    start_date = config.CUTOFF.strftime('%Y/%m/%d')
-    end_date = util.add_days(config.END_CUTOFF, 1).strftime('%Y/%m/%d')
-    query = "after:" + start_date + " before:" + end_date + " -label:no-reply"
-    gmail_messages = googleAPI.get_messages(googleAPI.SUPPORT_MAIL_API, 'me', query)
+    gmail_messages = googleAPI.get_messages_from_threads(support_mail_api, 'me', config.QUERY)
     print "...done"
 
     print "Building thread data..."
@@ -84,15 +104,9 @@ if not config.SKIP:
             continue
 
         if msg_id not in threads:
-            threads[msg_id] = mail.Thread(msg)
+            threads[msg_id] = mail.Thread(msg, stat_counter.stat_labels)
         else:
-            threads[msg_id].add_message(msg)
-
-        if msg.get_from_address() in admin_emails:
-            admin = admins[admin_emails[msg.get_from_address()]]
-            admin.update_last_contact(msg.get_date())
-            if "check-in call" in msg.get_labels():
-                admin.update_check_in(msg.get_date())
+            threads[msg_id].add_message(msg, stat_counter.stat_labels)
 
         if not config.COUNT_EVERY == 0 and i % config.COUNT_EVERY == 0:
             print i, msg
@@ -102,7 +116,10 @@ if not config.SKIP:
         fmail_out.close()
         mail_out.close()
     print "...done"
+    return threads
 
+
+def evaluate_threads(threads, member_data):
     print "Evaluating threads..."
     for thread in threads:
         trd = threads[thread]
@@ -114,96 +131,129 @@ if not config.SKIP:
 
     print "...done"
 
+
+def count_stats(stat_counter, threads, member_data, open_inquiries, inbox):
     print "Counting stats..."
-    new_open_inquires = stats.count_stats(threads, member_data)
+    new_open_inquires = stat_counter.count_stats(threads, member_data)
 
     # num_open = Number of threads currently open excluding new open inquires
     # num_closed = Number of threads closed since the last time stats were run.
     num_open, num_closed = mail.OpenInquiry.update(open_inquiries, new_open_inquires, inbox)
-    stats.count_open(num_open)
-    stats.count_existing_closed(num_closed)
+    stat_counter.count_open(num_open)
+    stat_counter.count_existing_closed(num_closed)
     print "...done"
 
-print "Updating Weekly Support Stats gsheet..."
-# Combine and format stats in prep for writing. Combines changes requests, CITI, Issues, Sales Ping. Calculates totals
-stats.format_stats()
 
-# Update weekly support stats gsheet
-stats.update_weekly_support_stats(googleAPI.SHEETS_API, config.WEEKLY_STATS_SHEET_ID)
-print "...done"
+def update_retention(retention_sheet_id, sheets_api, mem_stats_sheet_id, admin_sheet_id,
+                     member_data, stat_labels, admins):
+    # Update member and admin stats
+    try:
+        print "Updating Retention gsheet..."
+        new_mem_data = map(members.Member.create_stat_row, member_data.values())
+
+        mem_request = googleAPI.update_request(mem_stats_sheet_id, new_mem_data,
+                                               1, len(member_data) + 1, 0, len(stat_labels) + 3)
+        sort_request = googleAPI.sort_request(mem_stats_sheet_id, 0, 1, 1000, 0, 1000)
+
+        new_admin_data = map(lambda adm: members.Admin.create_stat_row(admins[adm]), sorted(admins.keys()))
+        admin_request = googleAPI.update_request(admin_sheet_id, new_admin_data, 1, len(new_admin_data) + 1, 4, 6)
+
+        # If on request fails neither member or admin data wil lbe updated.
+        googleAPI.spreadsheet_batch_update(sheets_api, retention_sheet_id,
+                                           [mem_request, sort_request, admin_request])
+
+        print "...done"
+
+    except HttpError, e:
+        util.print_error("Error: Failed to update Member or Admin. Report and resolve error then re-run stats")
+        raise e
 
 
-# Update member and admin stats
-try:
-    print "Updating Retention ghseet..."
-    new_mem_data = map(members.Member.create_stat_row, member_data.values())
+def duplicate_current_tab(current_sheet_id, enrollment_dash_id, sheets_api):
+    # Duplicate current tab on enrollment dash)
+    new_title = util.add_days(config.END_CUTOFF, 1).strftime('%m/%d')
 
-    mem_request = googleAPI.update_request(config.MEMBER_STATS_SHEET_ID, new_mem_data,
-                                           1, len(member_data) + 1, 0, len(stat_labels) + 3)
-    sort_request = googleAPI.sort_request(config.MEMBER_STATS_SHEET_ID, 0, 1, 1000, 0, 1000)
+    try:
+        print "Updating Enrollment Dashboard..."
+        duplicate_request = googleAPI.duplicate_sheet_request(current_sheet_id, new_title, 3)
+        googleAPI.spreadsheet_batch_update(sheets_api, enrollment_dash_id, [duplicate_request])
+        print "...done"
+    except HttpError:
+        util.print_error("Error: Failed to duplicate current tab on Enrollment Dashboard. See steps below.")
+        print '1. Duplicate Tab and rename as ' + new_title + ". If a conflict tab exists, rename the conflict tab."
+        print '2. Copy all cells on duplicated tab and paste as values to remove formulas'
+        print '3. Go to "Data -> Named Ranges" and remove all named ranges associated with the duplicated sheet'
+        print '4. Delete all call information on the "Current" Tab of the Enrollment Dashboard'
+        raw_input("Press enter to continue.")
 
-    new_admin_data = map(lambda adm: members.Admin.create_stat_row(admins[adm]), sorted(admins.keys()))
-    admin_request = googleAPI.update_request(config.ADMIN_SHEET_ID, new_admin_data, 1, len(new_admin_data) + 1, 4, 6)
+    else:
+        # Try each request individually in case one fails.
+        try:
+            delete_named_ranges_request = googleAPI.delete_named_range_request(
+                sheets_api, enrollment_dash_id, new_title)
+            googleAPI.spreadsheet_batch_update(sheets_api, enrollment_dash_id,
+                                               [delete_named_ranges_request])
+        except HttpError:
+            util.print_error("Error: Failed to delete named ranges on duplicated current tab. See steps below.")
+            print 'On the Enrollment Dashboard go to "Data -> Named Ranges" and remove all named ranges associated ' \
+                  'with the tab ' + new_title
+            raw_input("Press enter to continue.")
+        try:
+            googleAPI.remove_formulas(sheets_api, enrollment_dash_id, new_title + '!A:A')
+        except HttpError:
+            util.print_error("Error: Failed to remove values on duplicated current tab. See steps below.")
+            print 'Copy all cells on ' + new_title + ' of the Enrollment Dashboard and paste values to remove formulas'
+            raw_input("Press enter to continue.")
+        try:
+            googleAPI.clear_ranges(sheets_api, enrollment_dash_id, ['Current_Calls', 'Bens_Calls'])
+        except HttpError:
+            util.print_error("Error: Failed to clear cells on Current tab of Enrollment Dashboard. See steps below.")
+            print "Delete all call information on the 'Current' Tab of the Enrollment Dashboard"
+            raw_input("Press enter to continue.")
 
-    # If on request fails neither member or admin data wil lbe updated.
-    googleAPI.spreadsheet_batch_update(googleAPI.SHEETS_API, config.SPREADSHEET_ID,
-                                       [mem_request, sort_request, admin_request])
 
+def send_stats_email(stat_counter, mail_api, stats_email):
+    # Draft an email
+    print "Sending Stats email..."
+    subject = "Stats as of " + str(util.add_days(config.END_CUTOFF, 1).strftime('%m/%d/%Y'))
+    email_body = stat_counter.draft_message(config.CUTOFF, util.add_days(config.END_CUTOFF, 1))
+
+    try:
+        googleAPI.send_message(mail_api, "me", stats_email, subject, email_body)
+    except HttpError:
+        util.print_error("Error: Failed to send email to Andy. Use text in email.txt or text printed to terminal.")
+        raw_input("Press enter to continue.")
     print "...done"
 
-except HttpError, e:
-    util.print_error("Error: Failed to update Member or Admin. Report and resolve error then re-run stats")
-    raise e
 
-# Duplicate current tab on enrolment dash)
-new_title = time.strftime('%m/%d')
+def support_stats():
+    member_data, stat_labels = read_members(config.MEMBER_STATS_SHEET, config.SPREADSHEET_ID, googleAPI.SHEETS_API, 3)
+    support_stat_counter = stats.StatCounter(stat_labels)
+    admins, admin_emails = read_admins(config.ADMIN_SHEET, config.SPREADSHEET_ID, googleAPI.SHEETS_API)
 
-try:
-    print "Updating Enrollment Dashboard..."
-    duplicate_request = googleAPI.duplicate_sheet_request(config.CURRENT_SHEET_ID, new_title, 3)
-    googleAPI.spreadsheet_batch_update(googleAPI.SHEETS_API, config.ENROLLMENT_DASHBOARD_ID, [duplicate_request])
+    threads, open_inquiries, inbox = None, None, None
+    if not config.SKIP:
+        inbox, open_inquiries = read_inbox(support_stat_counter, "", googleAPI.SUPPORT_MAIL_API)
+        threads = read_stats(support_stat_counter, "", googleAPI.SUPPORT_MAIL_API, config.CUTOFF, config.END_CUTOFF)
+        update_admin_dates(threads, admins, admin_emails)
+        evaluate_threads(threads, member_data)
+
+        count_stats(support_stat_counter, threads, member_data, open_inquiries, inbox)
+
+    print "Updating Weekly Support Stats gsheet..."
+    # Combine and format stats in prep for writing.
+    #   Combines changes requests, CITI, Issues, Sales Ping. Calculates totals
+    support_stat_counter.format_stats()
+    # Update weekly support stats gsheet
+    support_stat_counter.update_weekly_support_stats(googleAPI.SHEETS_API, config.WEEKLY_STATS_SHEET_ID)
     print "...done"
-except HttpError:
-    util.print_error("Error: Failed to duplicate current tab on Enrollment Dashboard. See steps below.")
-    print '1. Duplicate Tab and rename as ' + new_title + ". If a conflict tab exists, rename the conflict tab."
-    print '2. Copy all cells on duplicated tab and paste as values to remove formulas'
-    print '3. Go to "Data -> Named Ranges" and remove all named ranges associated with the duplicated sheet'
-    print '4. Delete all call information on the "Current" Tab of the Enrollment Dashboard'
-    raw_input("Press enter to continue.")
 
-else:
-    # Try each request individually in case one fails.
-    try:
-        delete_named_ranges_request = googleAPI.delete_named_range_request(
-            googleAPI.SHEETS_API, config.ENROLLMENT_DASHBOARD_ID, new_title)
-        googleAPI.spreadsheet_batch_update(googleAPI.SHEETS_API, config.ENROLLMENT_DASHBOARD_ID,
-                                           [delete_named_ranges_request])
-    except HttpError:
-        util.print_error("Error: Failed to delete named ranges on duplicated current tab. See steps below.")
-        print 'On the Enrollment Dashboard go to "Data -> Named Ranges" and remove all named ranges associated ' \
-              'with the tab ' + new_title
-        raw_input("Press enter to continue.")
-    try:
-        googleAPI.remove_formulas(googleAPI.SHEETS_API, config.ENROLLMENT_DASHBOARD_ID, new_title + '!A:A')
-    except HttpError:
-        util.print_error("Error: Failed to remove values on duplicated current tab. See steps below.")
-        print 'Copy all cells on ' + new_title + ' of the Enrollment Dashboard and paste as values to remove formulas'
-        raw_input("Press enter to continue.")
-    try:
-        googleAPI.clear_ranges(googleAPI.SHEETS_API, config.ENROLLMENT_DASHBOARD_ID, ['Current_Calls', 'Bens_Calls'])
-    except HttpError:
-        util.print_error("Error: Failed to clear cells on Current tab of Enrollment Dashboard. See steps below.")
-        print "Delete all call information on the 'Current' Tab of the Enrollment Dashboard"
-        raw_input("Press enter to continue.")
+    # Update Google Sheets
+    update_retention(config.SPREADSHEET_ID, googleAPI.SHEETS_API, config.MEMBER_STATS_SHEET_ID, config.ADMIN_SHEET_ID,
+                     member_data, stat_labels, admins)
+    duplicate_current_tab(config.CURRENT_SHEET_ID, config.ENROLLMENT_DASHBOARD_ID, googleAPI.SHEETS_API)
+    send_stats_email(support_stat_counter, googleAPI.MAIL_API, config.STATS_EMAIL)
 
-# Draft an email
-print "Sending Stats email..."
-subject = "Stats as of " + time.strftime("%m/%d/%Y")
-email_body = stats.draft_message(config.CUTOFF)
 
-try:
-    googleAPI.send_message(googleAPI.MAIL_API, "me", config.STATS_EMAIL, subject, email_body)
-except HttpError:
-    util.print_error("Error: Failed to send email to Andy. Please use text in email.txt or text printed to terminal")
-    raw_input("Press enter to continue.")
-print "...done"
+if __name__ == '__main__':
+    support_stats()

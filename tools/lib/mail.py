@@ -1,5 +1,4 @@
 from members import MEMBERS
-import stats
 from tools import config
 import util
 
@@ -92,15 +91,16 @@ class Message(object):
         """
         return config.SUPPORT_EMAIL in self.from_address
 
-    def extract_labels(self):
+    def extract_labels(self, stat_labels):
         """
-        Extracts all labels from the message labels that are in either in stats.STAT_LABELS or members.MEMBERS
+        Extracts all labels from the message labels that are in either in stat_labels or members.MEMBERS
+        :param stat_labels dictionary of labels to look for.
         :return: 2 lists fro stat and member labels respectively.
         """
         statistics = set()
         members = set()
         for label in self.labels:
-            if label in stats.STAT_LABELS:
+            if label in stat_labels:
                 statistics.add(label)
             if label in MEMBERS:
                 members.add(label)
@@ -175,7 +175,7 @@ class Thread(object):
             False if any of the message labels contained a phrase contained in config.OPEN_LABELS (default=True)
 
     """
-    def __init__(self, message):
+    def __init__(self, message, stat_labels):
         """
         Constructs a new thread from the provided message.
         :param message: Message
@@ -184,7 +184,7 @@ class Thread(object):
 
         self.id = message.get_thread_id()
 
-        self.stat_labels, self.member_labels = message.extract_labels()
+        self.stat_labels, self.member_labels = message.extract_labels(stat_labels)
         self.last_contact_date = None
         self.oldest_date = message.get_date()
         self.good_thread = self.oldest_date >= config.CUTOFF
@@ -206,6 +206,7 @@ class Thread(object):
         self.closed = True
         self.subject = message.get_subject()
         self._evaluate(message)
+        self.messages = [message]
 
     def _evaluate(self, message):
         """
@@ -307,15 +308,16 @@ class Thread(object):
         else:
             self.good_thread = True
 
-    def add_message(self, message):
+    def add_message(self, message, stat_labels):
         """
         Adds message to a thread and evaluates all thread attributes making changes as necessary.
+        :param stat_labels to look search for during extraction
         :param message: Message
         :return: None
         """
         self.message_count += 1
 
-        new_stats, new_members = message.extract_labels()
+        new_stats, new_members = message.extract_labels(stat_labels)
         for label in new_stats:
             self.stat_labels.add(label)
 
@@ -336,6 +338,7 @@ class Thread(object):
         self.non_ping = len(self.stat_labels) > 0
 
         self._evaluate(message)
+        self.messages.append(message)
 
     def dont_count(self):
         self.good_thread = False
@@ -522,9 +525,10 @@ class OpenInquiry:
         return inbox
 
     @staticmethod
-    def from_current_inbox(inbox):
+    def from_current_inbox(inbox, stat_labels):
         """
         Builds a dictionary of open inquiries from a list of GMail messages.
+        :param stat_labels: collection stat labels to look for
         :param inbox: A list of GMail messages. Not a list of mail.Message types.
         :return: {Thread ID: OpenInquiry} for currently open and good threads.
         """
@@ -534,9 +538,9 @@ class OpenInquiry:
             thread_id = message.get_thread_id()
             if thread_id in threads:
                 if threads[thread_id].is_good():
-                    threads[thread_id].add_message(message)
+                    threads[thread_id].add_message(message, stat_labels)
             else:
-                threads[thread_id] = Thread(message)
+                threads[thread_id] = Thread(message, stat_labels)
 
             if not threads[thread_id].checked:
                 if message.is_to_from_support():
@@ -594,7 +598,10 @@ class OpenInquiry:
 
         open_inquiries.update(new_open_inquiries)
 
-        OpenInquiry._write_to_file(open_inquiries.values(), 'tools/open.txt')
+        outfile = 'tools/open.txt'
+        if config.TEST:
+            outfile = 'tools/test_open.txt'
+        OpenInquiry._write_to_file(open_inquiries.values(), outfile)
 
         return num_open, num_closed
 

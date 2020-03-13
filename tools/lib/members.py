@@ -108,18 +108,19 @@ class Member(object):
         return result
 
     @staticmethod
-    def read_members(rng, sheet_id, sheet_api):
+    def read_members(rng, sheet_id, sheet_api, header_index):
         """
         Reads in member data from the specified range and google sheet and returns a dictionary of members and statistic
         labels that will be counted
         :param rng: Range to be read from sheet_id
         :param sheet_id: Google sheet_id for the sheet to be read
         :param sheet_api: Google sheets API used to read the sheet
-        :return: member dictionary with (k,v) = (name, Member() object)
+        :param header_index: Start index (inclusive) of values that will be returned from header
+        :return: member dictionary with (k,v) = (name, Member() object), header[header_index:] from rng
         """
         data = get_range(rng, sheet_id, sheet_api)
 
-        stat_header = data[0][3:]
+        stat_header = data[0][header_index:]
 
         for member in data[1:]:
             try:
