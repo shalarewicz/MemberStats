@@ -4,18 +4,21 @@ from tools.lib import mail, members, stats, util, googleAPI
 from googleapiclient.errors import HttpError
 
 
-def read_members(mem_stats_sheet, retention_sheet_id, sheets_api, stat_header_index):
+def read_members(mem_stats_sheet, retention_sheet_id, sheets_api, stat_header_index, short_name_range):
     """
     Read in existing member stats and stat labels from the Retention sheet
     :param mem_stats_sheet: Sheet name for Member Stats tab on sheet specified by retention_sheet_id
     :param retention_sheet_id: Google Sheet ID for Retention sheet. Must contain mem_stats_sheet
     :param sheets_api: Sheets api used to execute the query
     :param stat_header_index: Start index (inclusive) of values that will be returned from the mem_stats_sheet header
+    :param short_name_range: Named Range in Retention sheet for short names. If mem_stats_sheet does not contain a name
+                            in this range it will be added to the mem_stats_sheet
     :return: member dictionary with (k,v) = (name, Member() object), mem_stats_sheet header[stat_header_index:]
     """
     try:
         member_data, stat_labels = \
-            members.Member.read_members(mem_stats_sheet, retention_sheet_id, sheets_api, stat_header_index)
+            members.Member.read_members(mem_stats_sheet, retention_sheet_id, sheets_api, stat_header_index,
+                                        short_name_range)
     except HttpError, e:
         util.print_error("Error: Failed to read Member data. Please report and resolve. Then re-run stats.")
         raise e
@@ -60,13 +63,16 @@ def read_inbox(stat_counter, file_base, support_mail_api):
         print 'Alternatively, you may locate/restore the prior version of open.txt to the tools folder and ' \
               're-run the script. This is recommended.'
         raw_input("Press enter to rebuild the file OR exit the script to locate and restore the file.")
+        temp = config.CUTOFF
+        config.CUTOFF = util.parse_date("January 1, 2000")
         open_inquiries = mail.OpenInquiry.from_current_inbox(inbox, stat_counter.stat_labels)
+        config.CUTOFF = temp
         print 'Done reading inbox for open inquiries.'
 
     return inbox, open_inquiries
 
 
-def read_stats(stat_counter, file_base, support_mail_api, start_date, end_date):
+def read_stats(stat_counter, file_base, support_mail_api):
     threads = {}
 
     # Obtain mail from Support Inbox and begin thread counting
@@ -144,11 +150,32 @@ def count_stats(stat_counter, threads, member_data, open_inquiries, inbox):
     print "...done"
 
 
+def update_retention_members_only(retention_sheet_id, sheets_api, mem_stats_sheet_id, member_data, stat_labels):
+    # Update member stats
+    try:
+        print "Updating Retention gsheet with member data..."
+        new_mem_data = map(members.Member.create_stat_row, member_data.values())
+
+        mem_request = googleAPI.update_request(mem_stats_sheet_id, new_mem_data,
+                                               1, len(member_data) + 1, 0, len(stat_labels) + 3)
+        sort_request = googleAPI.sort_request(mem_stats_sheet_id, 0, 1, 1000, 0, 1000)
+
+        # If on request fails neither member or admin data wil lbe updated.
+        googleAPI.spreadsheet_batch_update(sheets_api, retention_sheet_id,
+                                           [mem_request, sort_request])
+
+        print "...done"
+
+    except HttpError, e:
+        util.print_error("Error: Failed to update Member or Admin. Report and resolve error then re-run stats")
+        raise e
+
+
 def update_retention(retention_sheet_id, sheets_api, mem_stats_sheet_id, admin_sheet_id,
                      member_data, stat_labels, admins):
     # Update member and admin stats
     try:
-        print "Updating Retention gsheet..."
+        print "Updating Retention gsheet member and admin data..."
         new_mem_data = map(members.Member.create_stat_row, member_data.values())
 
         mem_request = googleAPI.update_request(mem_stats_sheet_id, new_mem_data,
@@ -212,29 +239,75 @@ def duplicate_current_tab(current_sheet_id, enrollment_dash_id, sheets_api):
             raw_input("Press enter to continue.")
 
 
-def send_stats_email(stat_counter, mail_api, stats_email):
+def send_stats_email(stat_counter, mail_api, to_address):
     # Draft an email
     print "Sending Stats email..."
     subject = "Stats as of " + str(util.add_days(config.END_CUTOFF, 1).strftime('%m/%d/%Y'))
     email_body = stat_counter.draft_message(config.CUTOFF, util.add_days(config.END_CUTOFF, 1))
 
     try:
-        googleAPI.send_message(mail_api, "me", stats_email, subject, email_body)
+        googleAPI.send_message(mail_api, "me", to_address, subject, email_body)
     except HttpError:
         util.print_error("Error: Failed to send email to Andy. Use text in email.txt or text printed to terminal.")
         raw_input("Press enter to continue.")
     print "...done"
 
 
-def support_stats():
-    member_data, stat_labels = read_members(config.MEMBER_STATS_SHEET, config.SPREADSHEET_ID, googleAPI.SHEETS_API, 3)
-    support_stat_counter = stats.StatCounter(stat_labels)
-    admins, admin_emails = read_admins(config.ADMIN_SHEET, config.SPREADSHEET_ID, googleAPI.SHEETS_API)
+def send_combined_stats_email(support_stat_counter, gov_stat_counter, mail_api, to_address):
+    # Draft an email
+    print "Sending Stats email..."
+    subject = "Stats as of " + str(util.add_days(config.END_CUTOFF, 1).strftime('%m/%d/%Y'))
 
-    threads, open_inquiries, inbox = None, None, None
+    html_body = stats.StatCounter.draft_html_message(support_stat_counter, gov_stat_counter, config.CUTOFF,
+                                                     config.END_CUTOFF)
+
+    try:
+        googleAPI.send_message(mail_api, "me", to_address, subject, html_body)
+    except HttpError:
+        util.print_error("Error: Failed to send email to Andy. Use text in email.txt or text printed to terminal.")
+        raw_input("Press enter to continue.")
+    print "...done"
+
+
+def gov_stats(file_base):
+    member_data, stat_labels = read_members(config.GOV_MEMBER_STATS_SHEET, config.RETENTION_SPREADSHEET_ID,
+                                            googleAPI.SHEETS_API, 3, config.GOV_SHORT_NAME_RANGE)
+    gov_support_stat_counter = stats.StatCounter(stat_labels)
+    # admins, admin_emails = read_admins(config.ADMIN_SHEET, config.SPREADSHEET_ID, googleAPI.SHEETS_API)
+
+    if not config.SKIP:
+        inbox, open_inquiries = read_inbox(gov_support_stat_counter, file_base, googleAPI.GOV_SUPPORT_MAIL_API)
+        threads = read_stats(gov_support_stat_counter, file_base, googleAPI.GOV_SUPPORT_MAIL_API)
+        # update_admin_dates(threads, admins, admin_emails)
+        evaluate_threads(threads, member_data)
+
+        count_stats(gov_support_stat_counter, threads, member_data, open_inquiries, inbox)
+
+    print "Updating Weekly Support Stats gsheet..."
+    # Combine and format stats in prep for writing.
+    #   Combines changes requests, CITI, Issues, Sales Ping. Calculates totals
+    gov_support_stat_counter.format_stats()
+    # Update weekly support stats gsheet
+    gov_support_stat_counter.update_weekly_support_stats(googleAPI.SHEETS_API, config.WEEKLY_STATS_SPREADSHEET_ID,
+                                                         config.GOV_WEEKLY_STATS_SHEET_ID)
+    print "...done"
+
+    # Update Google Sheets
+    update_retention_members_only(config.RETENTION_SPREADSHEET_ID, googleAPI.SHEETS_API,
+                                  config.GOV_MEMBER_STATS_SHEET_ID,
+                                  member_data, stat_labels)
+    return gov_support_stat_counter
+
+
+def support_stats():
+    member_data, stat_labels = read_members(config.MEMBER_STATS_SHEET, config.RETENTION_SPREADSHEET_ID,
+                                            googleAPI.SHEETS_API, 3, config.SHORT_NAME_RANGE)
+    support_stat_counter = stats.StatCounter(stat_labels)
+    admins, admin_emails = read_admins(config.ADMIN_SHEET, config.RETENTION_SPREADSHEET_ID, googleAPI.SHEETS_API)
+
     if not config.SKIP:
         inbox, open_inquiries = read_inbox(support_stat_counter, "", googleAPI.SUPPORT_MAIL_API)
-        threads = read_stats(support_stat_counter, "", googleAPI.SUPPORT_MAIL_API, config.CUTOFF, config.END_CUTOFF)
+        threads = read_stats(support_stat_counter, "", googleAPI.SUPPORT_MAIL_API)
         update_admin_dates(threads, admins, admin_emails)
         evaluate_threads(threads, member_data)
 
@@ -244,16 +317,28 @@ def support_stats():
     # Combine and format stats in prep for writing.
     #   Combines changes requests, CITI, Issues, Sales Ping. Calculates totals
     support_stat_counter.format_stats()
+    support_stat_counter.get_support_calls()
     # Update weekly support stats gsheet
-    support_stat_counter.update_weekly_support_stats(googleAPI.SHEETS_API, config.WEEKLY_STATS_SHEET_ID)
+    support_stat_counter.update_weekly_support_stats(googleAPI.SHEETS_API, config.WEEKLY_STATS_SPREADSHEET_ID)
     print "...done"
 
     # Update Google Sheets
-    update_retention(config.SPREADSHEET_ID, googleAPI.SHEETS_API, config.MEMBER_STATS_SHEET_ID, config.ADMIN_SHEET_ID,
+    update_retention(config.RETENTION_SPREADSHEET_ID, googleAPI.SHEETS_API, config.MEMBER_STATS_SHEET_ID,
+                     config.ADMIN_SHEET_ID,
                      member_data, stat_labels, admins)
     duplicate_current_tab(config.CURRENT_SHEET_ID, config.ENROLLMENT_DASHBOARD_ID, googleAPI.SHEETS_API)
-    send_stats_email(support_stat_counter, googleAPI.MAIL_API, config.STATS_EMAIL)
+    return support_stat_counter
 
 
 if __name__ == '__main__':
-    support_stats()
+    # TODO support gov stats only
+    # TODO add support for more than one additional inbox
+    # TODO Perform gsheet updates after all stats gathered.
+    # TODO Preface print/error statements with "Gov" or "Support"
+    # TODO Move all hardcoded values / global variables to config or create init method
+    # TODO Rebuild application shortcut. Allow for shortcut to run rom desktop
+    support_counter = support_stats()
+    # send_stats_email(support_counter, googleAPI.MAIL_API, config.STATS_TO_ADDRESS)
+    stats.Stat._id = 0
+    gov_counter = gov_stats("gov_")
+    send_combined_stats_email(support_counter, gov_counter, googleAPI.MAIL_API, config.STATS_TO_ADDRESS)

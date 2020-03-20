@@ -1,4 +1,3 @@
-import time
 import csv
 import datetime
 
@@ -7,6 +6,8 @@ import googleAPI
 import mail
 from tools import config
 import util
+from email.mime.text import MIMEText
+# TODO pip install email. See if it's possible to create local copies
 
 
 class Stat:
@@ -99,6 +100,7 @@ class Stat:
     def __gt__(self, other):
         return isinstance(other, Stat) and self._priority > other._priority
 
+
 #  TODO Move these to the config file
 PINGS = ["Sales Pings", "User Inquiries", "Demo Requests", "Support Pings",
          "New Organizations", "Voicemails", "Total Pings", "Web Form"]
@@ -136,7 +138,7 @@ def get_retention_calls():
 
     try:
         retention_calls = googleAPI.SHEETS_API.spreadsheets().values().get(
-            spreadsheetId=config.SPREADSHEET_ID, range='Weekly_Check_In')\
+            spreadsheetId=config.RETENTION_SPREADSHEET_ID, range='Weekly_Check_In')\
             .execute().get('values', [])
         return str(retention_calls[0][0])
     except HttpError:
@@ -400,7 +402,6 @@ class StatCounter:
         self.calc_total_closed()
         self.total_stats["Total Open Inquiries"].increment(self.total_stats['New Open Inquiries'].get_count())
         # Get call info
-        self.get_support_calls()
 
     def count_stats(self, threads, members):
         """
@@ -576,9 +577,9 @@ class StatCounter:
               str(self.call_stats["Institutions"].get_count()) + "\n" \
             "Total # of Retention Calls: " + str(get_retention_calls()) + "\n\n" \
             "Cumulative Weekly Statistics can be accessed via the following sheet:\n" \
-            "https://docs.google.com/a/irbnet.org/spreadsheets/d/" + config.WEEKLY_STATS_SHEET_ID + "\n\n" \
+            "https://docs.google.com/a/irbnet.org/spreadsheets/d/" + config.WEEKLY_STATS_SPREADSHEET_ID + "\n\n" \
             "Retention information can be accessed via the following sheet\n" \
-            "https://docs.google.com/spreadsheets/d/" + config.SPREADSHEET_ID + "\n\n" \
+            "https://docs.google.com/spreadsheets/d/" + config.RETENTION_SPREADSHEET_ID + "\n\n" \
             "Let me know if you have any questions. Thanks!\n\n" + initials
 
         return txt
@@ -634,3 +635,190 @@ class StatCounter:
                 util.print_error("Failed to write stats.csv. See stats below.")
                 for (v, t) in values:
                     print v
+
+    def get_totals(self):
+        total_pings = self.ping_stats["Total Pings"].get_count()
+        total_non_pings = self.stat_labels["Total Non-Pings"].get_count()
+        sales_pings = self.ping_stats["Sales Pings"].get_count()
+        pings_less_sales = total_pings - int(sales_pings[:str(sales_pings).find("(")])  # This removes web forms.
+        total = total_pings + total_non_pings
+
+        return total, total_non_pings, pings_less_sales
+
+    @staticmethod
+    def draft_html_message(support_counter, gov_counter, start_date, end_date):
+        """
+        Writes an email summarizing weekly statistics.
+        :param gov_counter: gov StatCounter
+        :param support_counter: support StatCounter
+        :param start_date: Earliest date for which stats were counted.
+        :param end_date: Latest date (inclusive) for which stats were counted.
+        :return: the email text
+        """
+        initials = raw_input("Enter your initials...  ")
+
+        total, total_non_pings, pings_less_sales = support_counter.get_totals()
+        gov_total, gov_total_non_pings, gov_pings_less_sales = gov_counter.get_totals()
+
+        end = end_date.strftime('%m/%d/%Y')
+        end_weekday = end_date.strftime('%a')
+        start = start_date.strftime('%m/%d/%Y')
+        start_weekday = start_date.strftime('%a')
+        support_pings_less_sales = pings_less_sales
+        gov_pings_less_sales = gov_pings_less_sales
+        support_total_non_pings = total_non_pings
+        gov_total_non_pings = gov_total_non_pings
+        support_sales_pings = support_counter.ping_stats["Sales Pings"].get_count()
+        gov_sales_pings = gov_counter.ping_stats["Sales Pings"].get_count()
+        support_total = total
+        gov_total = gov_total
+
+        support_new_open = support_counter.total_stats["New Open Inquiries"].get_count()
+        gov_new_open = gov_counter.total_stats["New Open Inquiries"].get_count()
+        support_new_closed = support_counter.total_stats["New Closed Inquiries"].get_count()
+        gov_new_closed = gov_counter.total_stats["New Closed Inquiries"].get_count()
+        support_existing_open_closed = support_counter.total_stats["Existing Open Inquiries Closed"].get_count()
+        gov_existing_open_closed = gov_counter.total_stats["Existing Open Inquiries Closed"].get_count()
+        support_total_open = support_counter.total_stats["Total Open Inquiries"].get_count()
+        gov_total_open = gov_counter.total_stats["Total Open Inquiries"].get_count()
+        support_total_closed = support_counter.total_stats["Total Closed Inquiries"].get_count()
+        gov_total_closed = gov_counter.total_stats["Total Closed Inquiries"].get_count()
+
+        support_vm_researcher = support_counter.vm_stats[config.VM_RESEARCHER].get_count()
+        gov_vm_researcher = gov_counter.vm_stats[config.VM_RESEARCHER].get_count()
+        support_vm_admin = support_counter.vm_stats[config.VM_ADMIN].get_count()
+        gov_vm_admin = gov_counter.vm_stats[config.VM_ADMIN].get_count()
+        support_vm_finance = support_counter.vm_stats[config.VM_FINANCE].get_count()
+        support_vm_sales = support_counter.vm_stats[config.VM_SALES].get_count()
+        sessions = support_counter.call_stats["Sessions"].get_count()
+
+        sales_calls = support_counter.call_stats["Sales Calls"].get_count()
+        demos = support_counter.call_stats["Demos"].get_count() + " " + support_counter.call_stats[
+            "Institutions"].get_count()
+        retention_calls = get_retention_calls()
+
+        weekly_stats_sheet_id = config.WEEKLY_STATS_SPREADSHEET_ID
+        retention_sheet_id = config.RETENTION_SPREADSHEET_ID
+
+        html = """
+        <p>Andy,</p> 
+            <p>
+                Below are the requested statistics from {start_weekday}, {start} to {end_weekday}, {end}
+            </p>
+            
+                <table width="50%">
+                <thead>
+                    <tr>
+                        <td width="60%"></td>
+                        <td width="15%"><strong>Support</strong></td>
+                        <td width="25%"><strong>Gov Support</strong></td>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>Pings (includes New Orgs; no Sales Pings):</td>
+                        <td>{support_pings_less_sales}</td>
+                        <td>{gov_pings_less_sales}</td>
+                    </tr>
+                    <tr>
+                        <td>Non-Pings:</td>
+                        <td>{support_total_non_pings}</td>
+                        <td>{gov_total_non_pings}</td>
+                    </tr>
+                    <tr>
+                        <td>Sales Inquiries:</td>
+                        <td>{support_sales_pings}</td>
+                        <td>{gov_sales_pings}</td>
+                    </tr>
+                    <tr>
+                        <td>Overall Total New Inquiries:</td>
+                        <td>{support_total}</td>
+                        <td>{gov_total}</td>
+                    </tr>
+                    <tr>
+                        <td colspan="2">&nbsp;</td>
+                    </tr>
+                        <td>Total New Inquiries (Non-Pings) Currently Open:</td>
+                        <td>{support_new_open}</td>
+                        <td>{gov_new_open}</td>
+                    </tr>
+                    <tr>
+                        <td>Total New Inquiries (Non-Pings) Closed:</td>
+                        <td>{support_new_closed}</td>
+                        <td>{gov_new_closed}</td>
+                    </tr>
+                    <tr>
+                        <td>Total Existing Open Inquiries Closed:</td>
+                        <td>{support_existing_open_closed}</td>
+                        <td>{gov_existing_open_closed}</td>
+                    </tr>
+                    <tr>
+                        <td>Total Open Inquiries:</td>
+                        <td>{support_total_open}</td>
+                        <td>{gov_total_open}</td>
+                    </tr>
+                    <tr>
+                        <td>Total Closed Inquiries:</td>
+                        <td>{support_total_closed}</td>
+                        <td>{gov_total_closed}</td>
+                    </tr>
+                    <tr>
+                        <td colspan="2">&nbsp;</td>
+                    </tr>
+                    <tr>
+                    <td>Total Researcher VMs:</td>
+                        <td>{support_vm_researcher}</td>
+                        <td>{gov_vm_researcher}</td>
+                    </tr>
+                    <tr>
+                        <td>Total Admin VMs:</td>
+                        <td>{support_vm_admin}</td>
+                        <td>{gov_vm_admin}</td>
+                    </tr>
+                    <tr>
+                        <td>Total Finance VMs:</td>
+                        <td colspan="2">{support_vm_finance}</td>
+                    </tr>
+                    <tr>
+                        <td>Total Sales VMs:</td>
+                        <td colspan="2">{support_vm_sales}</td>
+                    </tr>
+                    <tr>
+                        <td colspan="2">&nbsp;</td>
+                    </tr>
+                    <tr>
+                        <td>Total # of Sessions:</td>
+                        <td colspan="2">{sessions}</td>
+                    </tr>
+                    <tr>
+                        <td>Total # of Sales Calls:</td>
+                        <td colspan="2">{sales_calls}</td>
+                    </tr>
+                    <tr>
+                        <td>Total # of Demo Calls:</td>
+                        <td colspan="2">{demos}</td>
+                    </tr>
+                    <tr>
+                        <td>Total # of Retention Calls:</td>
+                        <td colspan="2">{retention_calls}</td>
+                    </tr>
+                    </tbody>
+            </table>
+            
+            <p>
+               Cumulative Weekly Statistics can be accessed via the following sheet:<br />
+               https://docs.google.com/a/irbnet.org/spreadsheets/d/{weekly_stats_sheet_id}
+            </p>
+            <p>
+                Retention information can be accessed via the following sheet<br />
+                https://docs.google.com/spreadsheets/d/{retention_sheet_id}
+            </p>
+            
+            <p>
+                Let me know if you have any questions. Thanks!
+            </p>
+            
+            <p>{initials}</p>
+        """.format(**locals())
+
+        return MIMEText(html, 'html')

@@ -108,7 +108,7 @@ class Member(object):
         return result
 
     @staticmethod
-    def read_members(rng, sheet_id, sheet_api, header_index):
+    def read_members(rng, sheet_id, sheet_api, header_index, short_name_range):
         """
         Reads in member data from the specified range and google sheet and returns a dictionary of members and statistic
         labels that will be counted
@@ -116,6 +116,8 @@ class Member(object):
         :param sheet_id: Google sheet_id for the sheet to be read
         :param sheet_api: Google sheets API used to read the sheet
         :param header_index: Start index (inclusive) of values that will be returned from header
+        :param short_name_range: Named Range in Retention sheet for short names. If mem_stats_sheet does not contain a
+                                 name in this range it will be added to the mem_stats_sheet
         :return: member dictionary with (k,v) = (name, Member() object), header[header_index:] from rng
         """
         data = get_range(rng, sheet_id, sheet_api)
@@ -138,7 +140,7 @@ class Member(object):
                 exit()
 
         # Add any members not in the sheet
-        for member in get_range('Short_Names', sheet_id, sheet_api):
+        for member in get_range(short_name_range, sheet_id, sheet_api):
             if member[0] not in MEMBERS.keys():
                 # If the member is listed on the Retention tab but not Member Stats tab add a row of blank info
                 MEMBERS[member[0]] = Member(member[0], None, None, [0] * len(stat_header))
@@ -186,7 +188,7 @@ class Admin(object):
         :param rng: Range to be read from sheet_id
         :param sheet_id: Google sheet_id for the sheet to be read
         :param sheet_api: Google sheets API used to read the sheet
-        :return: admin dictionary with (k,v) = (name, Admin() object)
+        :return: admin dictionary with (k,v) = (id, Admin() object)
         """
         admins = {}
         admin_emails = {}

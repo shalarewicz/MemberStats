@@ -72,7 +72,7 @@ def print_error(text):
     :param text: Error message
     :return: None
     """
-    print >> stderr.write('\n'+text+'\n')
+    print >> stderr.write('\n'+str(text)+'\n')
 
 
 def serial_date(date):
