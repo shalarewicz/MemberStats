@@ -1,4 +1,3 @@
-from members import MEMBERS
 from tools import config
 import util
 
@@ -91,10 +90,11 @@ class Message(object):
         """
         return config.SUPPORT_EMAIL in self.from_address
 
-    def extract_labels(self, stat_labels):
+    def extract_labels(self, stat_labels, members_labels):
         """
         Extracts all labels from the message labels that are in either in stat_labels or members.MEMBERS
-        :param stat_labels dictionary of labels to look for.
+        :param stat_labels collection of stat labels to search for.
+        :param members_labels collection of member labels to search for
         :return: 2 lists fro stat and member labels respectively.
         """
         statistics = set()
@@ -102,7 +102,7 @@ class Message(object):
         for label in self.labels:
             if label in stat_labels:
                 statistics.add(label)
-            if label in MEMBERS:
+            if label in members_labels:
                 members.add(label)
         return statistics, members
 
@@ -175,19 +175,22 @@ class Thread(object):
             False if any of the message labels contained a phrase contained in config.OPEN_LABELS (default=True)
 
     """
-    def __init__(self, message, stat_labels):
+    def __init__(self, message, stat_labels, cutoff, members=None):
         """
         Constructs a new thread from the provided message.
         :param message: Message
             Used to construct the thread. Thread attributes are adjusted based on message information.
+        :param stat_labels stat labels to search for
+        :param members: collection of member labels to search for
+        :param cutoff: earliest date for which a thread should count
         """
 
         self.id = message.get_thread_id()
 
-        self.stat_labels, self.member_labels = message.extract_labels(stat_labels)
+        self.stat_labels, self.member_labels = message.extract_labels(stat_labels, members)
         self.last_contact_date = None
         self.oldest_date = message.get_date()
-        self.good_thread = self.oldest_date >= config.CUTOFF
+        self.good_thread = self.oldest_date >= cutoff
         if not (message.is_from_support() or is_internal(message.get_from_address())):
             self.last_contact_date = message.get_date()
         self.check_in_date = None
@@ -308,16 +311,18 @@ class Thread(object):
         else:
             self.good_thread = True
 
-    def add_message(self, message, stat_labels):
+    def add_message(self, message, stat_labels, cutoff, members=None):
         """
         Adds message to a thread and evaluates all thread attributes making changes as necessary.
         :param stat_labels to look search for during extraction
         :param message: Message
+        :param members: collection of member labels to search for
+        :param cutoff: earliest date for which a thread should count
         :return: None
         """
         self.message_count += 1
 
-        new_stats, new_members = message.extract_labels(stat_labels)
+        new_stats, new_members = message.extract_labels(stat_labels, members)
         for label in new_stats:
             self.stat_labels.add(label)
 
@@ -325,7 +330,7 @@ class Thread(object):
             self.member_labels.add(label)
 
         new_date = message.get_date()
-        if new_date < config.CUTOFF:
+        if new_date < cutoff:
             self.good_thread = False
 
         if self.oldest_date is None or new_date < self.oldest_date:
@@ -575,8 +580,7 @@ class OpenInquiry:
             Existing open inquiries
         :param new_open_inquiries: dict(OpenInquiry)
             Open inquires which which will be added to open_inquiries
-        :param inbox: dict(OpenInquiry)
-            Inquires currently in the inbox
+        :param inbox: collection of thread IDs used to check if a thread is still in the inbox
         :return: (num_open : int, num_closed : int)
             num_open = Number of open inquires from the last stats run that are still open
             num_closed = Number of inquires closed since the last stats run
@@ -584,10 +588,9 @@ class OpenInquiry:
         num_open = 0
         num_closed = 0
         to_delete = []
-        current = OpenInquiry._from_message_list(inbox)
 
         for thread in open_inquiries:
-            if open_inquiries[thread].id in current:
+            if open_inquiries[thread].id in inbox:
                 num_open += 1
             else:
                 num_closed += 1
@@ -596,17 +599,12 @@ class OpenInquiry:
         for thread in to_delete:
             del open_inquiries[thread]
 
+        # Update dictionary with all new open inquiries
         open_inquiries.update(new_open_inquiries)
-
-        outfile = 'tools/open.txt'
-        if config.TEST:
-            outfile = 'tools/test_open.txt'
-        OpenInquiry._write_to_file(open_inquiries.values(), outfile)
-
-        return num_open, num_closed
+        return num_open, num_closed, open_inquiries
 
     @staticmethod
-    def _write_to_file(open_inquiries, filename):
+    def write_to_file(open_inquiries, filename):
         """
          Writes the current list of open inquires to filename which has the following format
             THREAD_ID
@@ -616,8 +614,13 @@ class OpenInquiry:
         :raise IOError: If filename cannot be written to.
         :return: None
         """
+        test = ''
+        if config.TEST:
+            test = 'test_'
+
+        outfile = 'tools/' + test + filename
         try:
-            out = open(filename, 'wb')
+            out = open(outfile, 'wb')
 
             print "Recording open inquiries...\n"
             for thread in open_inquiries:
@@ -627,4 +630,4 @@ class OpenInquiry:
             out.close()
         except IOError, e:
             print e
-            print 'Could not open ' + filename + ' for writing.'
+            print 'Could not open ' + outfile + ' for writing.'

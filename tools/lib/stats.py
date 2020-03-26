@@ -7,7 +7,6 @@ import mail
 from tools import config
 import util
 from email.mime.text import MIMEText
-# TODO pip install email. See if it's possible to create local copies
 
 
 class Stat:
@@ -129,7 +128,7 @@ def from_list(lst):
     return result
 
 
-def get_retention_calls():
+def get_retention_calls(sheets_api, retention_spreadsheet_id):
     """
     Attempts to obtain the number of retention calls from teh Retention spreadsheet. If this attempt fails the
     user is prompted to enter the number of calls.
@@ -137,9 +136,7 @@ def get_retention_calls():
     """
 
     try:
-        retention_calls = googleAPI.SHEETS_API.spreadsheets().values().get(
-            spreadsheetId=config.RETENTION_SPREADSHEET_ID, range='Weekly_Check_In')\
-            .execute().get('values', [])
+        retention_calls = googleAPI.get_range(config.RETENTION_CALLS, retention_spreadsheet_id, sheets_api)
         return str(retention_calls[0][0])
     except HttpError:
         util.print_error("Error: Failed to read number of check in calls.")
@@ -340,9 +337,6 @@ class StatCounter:
 
         Sums ping and non-ping totals
 
-        Updates CALL_STATS with support call information.
-
-        :return:
         """
         # Combine non-pings
         change = self.stat_labels["Change Request"].get_count()
@@ -401,27 +395,29 @@ class StatCounter:
         self.total_stats["Overall Total New Inquiries"].set_count(total_pings + total_non_pings)
         self.calc_total_closed()
         self.total_stats["Total Open Inquiries"].increment(self.total_stats['New Open Inquiries'].get_count())
-        # Get call info
 
-    def count_stats(self, threads, members):
+    def count_stats(self, threads, members, file_base):
         """
         Counts the number of statistics and updates the STAT_LABELS, PING_STATS, TOTAL_STATS dictionaries.
         :param threads: Threads for which stats will be determined.
         :param members: Members whos stats will be updated.
+        :param file_base: preface any generated log files
         :return: Dictionary of new open inquiries.
         """
         out = None
         writer = None
+        base = file_base
+        if config.TEST:
+            base = 'test_' + base
         if config.DEBUG:
             try:
-                filename = 'tools/logs/thread_lookup.csv'
-                if config.TEST:
-                    filename = 'tools/logs/test_thread_lookup.csv'
+                filename = 'tools/logs/' + base + 'thread_lookup.csv'
+
                 out = open(filename, 'wb')
                 writer = csv.writer(out)
                 writer.writerow(["Date", "Subject", "Stats", "Members", "Counted Stat", "Closed?"])
             except IOError:
-                util.print_error("Error. Could not open thread_lookup. Results will not be logged.")
+                util.print_error('Error. Could not open ' + base + 'thread_lookup. Results will not be logged.')
 
         open_inquiries = {}
         for thread in threads:
@@ -503,14 +499,14 @@ class StatCounter:
             out.close()
         return open_inquiries
 
-    def get_support_calls(self):
+    def get_support_calls(self, sheets_api):
         """
         Attempts to obtain the number of support calls from the Enrollment Dashboard. Updates the CALL_STATS with
         correct values.
         :return: None.
         """
         try:
-            calls = googleAPI.get_range('Call_Info', config.ENROLLMENT_DASHBOARD_ID, googleAPI.SHEETS_API, 'COLUMNS')
+            calls = googleAPI.get_range('Call_Info', config.ENROLLMENT_DASHBOARD_ID, sheets_api, 'COLUMNS')
         except HttpError, e:
             print e
             util.print_error("Error: Failed to read call info from Enrollment Dashboard. Please report.")
@@ -532,12 +528,13 @@ class StatCounter:
         self.call_stats["Demos"].set_count(sales_demos)
         self.call_stats["Institutions"].set_count(demo_institutions)
 
-    def draft_message(self, start_date, end_date):
+    def draft_message(self, start_date, end_date, retention_calls):
         """
         Writes an email summarizing weekly statistics.
         :param start_date: Earliest date for which stats were counted.
         :param end_date: Latest date (inclusive) for which stats were counted.
-        :return: the email text
+        :param retention_calls: number of retention calls
+        :return: email text in MIMEText format
         """
         initials = raw_input("Enter your initials...  ")
 
@@ -575,14 +572,14 @@ class StatCounter:
             "Total # of Sales Calls: " + str(self.call_stats["Sales Calls"].get_count()) + "\n" \
             "Total # of Demo Calls: " + str(self.call_stats["Demos"].get_count()) + " " + \
               str(self.call_stats["Institutions"].get_count()) + "\n" \
-            "Total # of Retention Calls: " + str(get_retention_calls()) + "\n\n" \
+            "Total # of Retention Calls: " + str(retention_calls) + "\n\n" \
             "Cumulative Weekly Statistics can be accessed via the following sheet:\n" \
             "https://docs.google.com/a/irbnet.org/spreadsheets/d/" + config.WEEKLY_STATS_SPREADSHEET_ID + "\n\n" \
             "Retention information can be accessed via the following sheet\n" \
             "https://docs.google.com/spreadsheets/d/" + config.RETENTION_SPREADSHEET_ID + "\n\n" \
             "Let me know if you have any questions. Thanks!\n\n" + initials
 
-        return txt
+        return MIMEText(txt)
 
     def update_weekly_support_stats(self, service, spreadsheet_id, sheet_id=0):
         """
@@ -646,13 +643,14 @@ class StatCounter:
         return total, total_non_pings, pings_less_sales
 
     @staticmethod
-    def draft_html_message(support_counter, gov_counter, start_date, end_date):
+    def draft_html_message(support_counter, gov_counter, start_date, end_date, retention_calls):
         """
         Writes an email summarizing weekly statistics.
         :param gov_counter: gov StatCounter
         :param support_counter: support StatCounter
         :param start_date: Earliest date for which stats were counted.
         :param end_date: Latest date (inclusive) for which stats were counted.
+        :param retention_calls: number of retention calls
         :return: the email text
         """
         initials = raw_input("Enter your initials...  ")
@@ -695,7 +693,7 @@ class StatCounter:
         sales_calls = support_counter.call_stats["Sales Calls"].get_count()
         demos = support_counter.call_stats["Demos"].get_count() + " " + support_counter.call_stats[
             "Institutions"].get_count()
-        retention_calls = get_retention_calls()
+        retention_calls = retention_calls
 
         weekly_stats_sheet_id = config.WEEKLY_STATS_SPREADSHEET_ID
         retention_sheet_id = config.RETENTION_SPREADSHEET_ID

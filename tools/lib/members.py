@@ -2,9 +2,6 @@ from googleAPI import get_range
 import util
 
 
-MEMBERS = {}  # Member dictionary {short name: Member}
-
-
 class Member(object):
     """
     A Member allows for the tracking tracking member specific statistics, check in date and last contact date.
@@ -50,21 +47,6 @@ class Member(object):
         """
         if date is not None and (self.last_contact is None or date > self.last_contact):
             self.last_contact = date
-
-    @staticmethod
-    def update_member_dates(member, last_contact, check_in):
-        """
-        Compares the provided dates against the members record in MEMBERS and updates if necessary
-        :param member:
-        :param last_contact:
-        :param check_in:
-        :return: None
-        """
-        try:
-            MEMBERS[member].update_last_contact(last_contact)
-            MEMBERS[member].update_check_in(check_in)
-        except KeyError:
-            util.print_error("Error: Failed to updates dates for member (Member nof found): " + member.name)
 
     def get_stats(self):
         return self.stats
@@ -123,6 +105,7 @@ class Member(object):
         data = get_range(rng, sheet_id, sheet_api)
 
         stat_header = data[0][header_index:]
+        members = {}
 
         for member in data[1:]:
             try:
@@ -133,7 +116,7 @@ class Member(object):
                 parsed_stats = []
                 for s in mem_stats:
                     parsed_stats.append(int(s))
-                MEMBERS[name] = Member(name, contact, check_in, parsed_stats)
+                members[name] = Member(name, contact, check_in, parsed_stats)
             except IndexError:
                 print "The following member does not have a complete set of data on the " + rng + " tab." \
                       "Please update the member and rerun the script\n" + member
@@ -141,11 +124,11 @@ class Member(object):
 
         # Add any members not in the sheet
         for member in get_range(short_name_range, sheet_id, sheet_api):
-            if member[0] not in MEMBERS.keys():
+            if member[0] not in members.keys():
                 # If the member is listed on the Retention tab but not Member Stats tab add a row of blank info
-                MEMBERS[member[0]] = Member(member[0], None, None, [0] * len(stat_header))
+                members[member[0]] = Member(member[0], None, None, [0] * len(stat_header))
 
-        return MEMBERS, stat_header
+        return members, stat_header
 
 
 class Admin(object):

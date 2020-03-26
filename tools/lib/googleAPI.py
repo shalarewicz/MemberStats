@@ -75,12 +75,13 @@ def _get_credentials(account_type, scope):
     return creds
 
 
-def _get_api(name, version, account_type, scope, timeout):
+def get_api(name, version, account_type, scope, timeout):
     """
     Retrieves the specified google api for the specified account type
     :param name: name of the api being requested (i.e. gmail, sheets)
     :param version: version of the requested api
     :param account_type: ['personal', 'support', 'gov'] specifies account for which api should be obtained
+    :param scope: Access scope for the api service
     :param timeout: number of attempts to access the api
     :return: google api service. If an invalid type is provided None is returned.
     """
@@ -90,13 +91,7 @@ def _get_api(name, version, account_type, scope, timeout):
     try:
         return build(name, version, credentials=_get_credentials(account_type, scope))
     except RefreshError:
-        return _get_api(name, version, account_type, scope, timeout - 1)
-
-
-MAIL_API = _get_api('gmail', 'v1', 'personal', SCOPES, 3)
-SHEETS_API = _get_api('sheets', 'v4', 'personal', SCOPES, 3)
-SUPPORT_MAIL_API = _get_api('gmail', 'v1', 'support', SUPPORT_SCOPE, 3)
-GOV_SUPPORT_MAIL_API = _get_api('gmail', 'v1', 'gov_support', GOV_SUPPORT_SCOPE, 3)
+        return get_api(name, version, account_type, scope, timeout - 1)
 
 
 def get_range(rng, sheet_id, sheet_api, dimension='ROWS', values_only=True):
@@ -634,6 +629,7 @@ def get_messages_from_threads(service, user_id='me', query=''):
         result = []
 
         for thread in threads:
+            # TODO Multithread this for speed
             thread_response = service.users().threads().get(userId='me', id=thread).execute()
             messages = thread_response["messages"]
             for message in messages:
