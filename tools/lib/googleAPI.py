@@ -1,6 +1,9 @@
 import os
 import base64
 import pickle
+import traceback
+from ssl import SSLError
+
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 from google.auth.exceptions import RefreshError
@@ -513,6 +516,13 @@ def get_message(service, user_id, msg_id, labels):
             to_find.remove(found['name'])
 
         return message
+    except SSLError, e:
+        print "Timeout"
+        print msg_id
+        print e.__class__
+        print e
+        traceback.print_exc()
+
     except StopIteration:
         # Skip this message. This only happens with drafts missing a field and does not affect stats.
         pass
@@ -639,17 +649,26 @@ def get_messages_from_threads(service, user_id='me', query=''):
     result = []
 
     for thread in threads:
-        # TODO Multithread this for speed
-        thread_response = service.users().threads().get(userId='me', id=thread).execute()
-        messages = thread_response["messages"]
-        for message in messages:
-            try:
-                new_message = get_message(service, user_id, message['id'], labels)
-                if new_message is not None:
-                    result.append(new_message)
-            except KeyError:
-                print "Failed:"
-                print message
+        try:
+            # print thread # this is the thread id
+            # TODO Multithread this for speed
+            thread_response = service.users().threads().get(userId='me', id=thread, format="minimal").execute()
+            messages = thread_response["messages"]
+            for message in messages:
+                try:
+                    new_message = get_message(service, user_id, message['id'], labels)
+                    if new_message is not None:
+                        result.append(new_message)
+                except KeyError:
+                    print "Failed:"
+                    print message
+        except SSLError, e:
+            print "Thread Timeout"
+            print thread
+            print e.__class__
+            print e
+            traceback.print_exc()
+
     return result
 
     # except HttpError, e:
