@@ -70,4 +70,4 @@ DEBUG = False  # IF True, outputs log files
 GOV = False  # IF True, only calculates gov statistics
 
 QUERY = " -label:no-reply -label:Report-Heartbeat -label:-googlespam -label:-180spam -label:WebEx " \
-        "-label:-forwarded-to-govsupport"
+        "-label:-forwarded-to-govsupport -label:-spam"
