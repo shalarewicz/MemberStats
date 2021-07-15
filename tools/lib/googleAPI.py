@@ -75,6 +75,16 @@ def _get_credentials(account_type, scope):
     return creds
 
 
+def remove_credentials(account_type):
+    home_dir = os.path.expanduser('~')
+    credential = '/' + account_type + '_token.pickle'
+
+    credential_dir = os.path.join(home_dir, '.credentials')
+    credential_path = credential_dir + credential
+
+    os.remove(credential_path)
+
+
 def get_api(name, version, account_type, scope, timeout):
     """
     Retrieves the specified google api for the specified account type
