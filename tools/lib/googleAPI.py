@@ -619,35 +619,39 @@ def get_messages_from_threads(service, user_id='me', query=''):
     :param query: gmail query used to search for messages. All messages in thread must match query.
     :return: list of messages. message.keys() = 'X-GM-THRID' , Subject, To, From and 'X-Gmail-Labels'
     """
-    try:
-        # response has format {"threads": [threadResource], "resultSizeEstimate": 1, "nextPageToken": "xxxx"}
-        # threadResource has format {"id": "xxxx", "snippet": "xxxxx", "historyId": "xxxxx"}
-        response = service.users().threads().list(userId=user_id, q=query).execute()
-        threads = set()
-        if 'threads' in response:
-            for thread in response['threads']:
-                threads.add(thread["id"])
+    # try:
+    # response has format {"threads": [threadResource], "resultSizeEstimate": 1, "nextPageToken": "xxxx"}
+    # threadResource has format {"id": "xxxx", "snippet": "xxxxx", "historyId": "xxxxx"}
+    response = service.users().threads().list(userId=user_id, q=query).execute()
+    threads = set()
+    if 'threads' in response:
+        for thread in response['threads']:
+            threads.add(thread["id"])
 
-        while 'nextPageToken' in response:
-            page_token = response['nextPageToken']
-            response = service.users().threads().list(userId=user_id, q=query,
-                                                      pageToken=page_token).execute()
-            for thread in response['threads']:
-                threads.add(thread["id"])
+    while 'nextPageToken' in response:
+        page_token = response['nextPageToken']
+        response = service.users().threads().list(userId=user_id, q=query,
+                                                  pageToken=page_token).execute()
+        for thread in response['threads']:
+            threads.add(thread["id"])
 
-        labels = get_labels(service, user_id)
-        result = []
+    labels = get_labels(service, user_id)
+    result = []
 
-        for thread in threads:
-            # TODO Multithread this for speed
-            thread_response = service.users().threads().get(userId='me', id=thread).execute()
-            messages = thread_response["messages"]
-            for message in messages:
+    for thread in threads:
+        # TODO Multithread this for speed
+        thread_response = service.users().threads().get(userId='me', id=thread).execute()
+        messages = thread_response["messages"]
+        for message in messages:
+            try:
                 new_message = get_message(service, user_id, message['id'], labels)
                 if new_message is not None:
                     result.append(new_message)
-        return result
+            except KeyError:
+                print "Failed:"
+                print message
+    return result
 
-    except HttpError, e:
-        print_error('Error: Failed to retrieve thread messages for: ' + str(user_id) + ' using query: ' + str(query))
-        raise e
+    # except HttpError, e:
+    #     print_error('Error: Failed to retrieve thread messages for: ' + str(user_id) + ' using query: ' + str(query))
+    #     raise e
